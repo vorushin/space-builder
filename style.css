@@ -1,0 +1,58 @@
+body {
+    margin: 0;
+    overflow: hidden;
+    background-color: #000;
+    color: #fff;
+    font-family: sans-serif;
+}
+
+canvas {
+    display: block;
+    position: absolute;
+    top: 0;
+    left: 0;
+}
+
+#ui {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    z-index: 1;
+    pointer-events: none;
+    /* Let clicks pass through to canvas */
+}
+
+#health-info {
+    margin-top: 10px;
+    font-size: 14px;
+}
+
+#ship-health, #station-health {
+    margin-bottom: 5px;
+}
+
+#actions {
+    margin-top: 10px;
+    pointer-events: auto;
+    /* Re-enable clicks for actions */
+}
+
+#action-list {
+    list-style-type: none;
+    padding: 0;
+    pointer-events: auto;
+    /* Re-enable clicks for list items */
+}
+
+#action-list li {
+    background-color: #333;
+    padding: 5px 10px;
+    margin-bottom: 5px;
+    cursor: pointer;
+}
+
+#action-list li.disabled {
+    background-color: #555;
+    color: #aaa;
+    cursor: default;
+}
