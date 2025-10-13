@@ -10,17 +10,90 @@
 </head>
 
 <body>
-  <div id="ui">
-    <div id="resources">Resources: <span id="resource-count">0</span></div>
-    <div id="health-info">
-      <div id="ship-health">Ship: <span id="ship-health-value">100/100</span></div>
-      <div id="station-health">Station: <span id="station-health-value">0/0</span></div>
+  <!-- Top HUD -->
+  <div id="top-hud">
+    <div id="level-info">
+      <div class="hud-label">SECTOR</div>
+      <div class="hud-value" id="level-name">Asteroid Belt</div>
     </div>
-    <div id="actions">
-      <h3>Actions</h3>
-      <ul id="action-list">
-        <!-- Actions will be populated here -->
-      </ul>
+    <div id="resources-display">
+      <div class="hud-label">RESOURCES</div>
+      <div class="hud-value resource-amount" id="resource-count">0</div>
+    </div>
+  </div>
+
+  <!-- Left Side - Ship Status -->
+  <div id="left-hud">
+    <div class="status-panel">
+      <div class="panel-header">SHIP STATUS</div>
+      <div class="health-bar-container">
+        <div class="health-label">Hull Integrity</div>
+        <div class="health-bar-bg">
+          <div class="health-bar ship-health-bar" id="ship-health-bar"></div>
+        </div>
+        <div class="health-value" id="ship-health-value">100/100</div>
+      </div>
+      <div class="weapon-upgrade-container">
+        <div class="weapon-header">
+          <div class="weapon-label" id="ship-weapon-label">Basic Gun</div>
+          <div class="weapon-level">LVL <span id="ship-weapon-level">1</span></div>
+        </div>
+        <div class="weapon-progress-bg">
+          <div class="weapon-progress-bar" id="ship-weapon-progress"></div>
+        </div>
+        <div class="weapon-upgrade-info">
+          <span id="ship-weapon-cost">0 / 150</span>
+          <button class="upgrade-button" id="ship-upgrade-btn">+1</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right Side - Station Status -->
+  <div id="right-hud">
+    <div class="status-panel">
+      <div class="panel-header">STATION STATUS</div>
+      <div class="health-bar-container">
+        <div class="health-label">Structural Integrity</div>
+        <div class="health-bar-bg">
+          <div class="health-bar station-health-bar" id="station-health-bar"></div>
+        </div>
+        <div class="health-value" id="station-health-value">0/0</div>
+      </div>
+      <div class="weapon-upgrade-container">
+        <div class="weapon-header">
+          <div class="weapon-label" id="station-level-label">Core Module</div>
+          <div class="weapon-level">LVL <span id="station-level-display">0</span></div>
+        </div>
+        <div class="weapon-progress-bg">
+          <div class="weapon-progress-bar" id="station-level-progress"></div>
+        </div>
+        <div class="weapon-upgrade-info">
+          <span id="station-level-cost">0 / 100</span>
+          <button class="upgrade-button" id="station-level-btn">+1</button>
+        </div>
+      </div>
+      <div class="weapon-upgrade-container">
+        <div class="weapon-header">
+          <div class="weapon-label" id="station-gun-label">No Defense</div>
+          <div class="weapon-level">LVL <span id="station-gun-level-display">0</span></div>
+        </div>
+        <div class="weapon-progress-bg">
+          <div class="weapon-progress-bar" id="station-gun-progress"></div>
+        </div>
+        <div class="weapon-upgrade-info">
+          <span id="station-gun-cost">0 / 200</span>
+          <button class="upgrade-button" id="station-gun-btn">+1</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bottom Center - Goal Panel -->
+  <div id="goal-panel">
+    <div class="panel-header">MISSION OBJECTIVES</div>
+    <div id="goal-progress">
+      <!-- Goal progress will be populated here -->
     </div>
   </div>
   <script src="main.js"></script>

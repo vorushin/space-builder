@@ -1,9 +1,15 @@
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap');
+
+* {
+    box-sizing: border-box;
+}
+
 body {
     margin: 0;
     overflow: hidden;
     background-color: #000;
     color: #fff;
-    font-family: sans-serif;
+    font-family: 'Orbitron', 'Courier New', monospace;
 }
 
 canvas {
@@ -13,46 +19,416 @@ canvas {
     left: 0;
 }
 
-#ui {
+/* Top HUD Bar */
+#top-hud {
     position: absolute;
-    top: 10px;
-    left: 10px;
-    z-index: 1;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+    display: flex;
+    gap: 40px;
+    padding: 20px 40px;
+    background: linear-gradient(180deg, rgba(0, 20, 40, 0.95) 0%, rgba(0, 10, 20, 0.85) 70%, transparent 100%);
+    border-bottom-left-radius: 20px;
+    border-bottom-right-radius: 20px;
+    border: 2px solid rgba(0, 150, 255, 0.3);
+    border-top: none;
+    box-shadow: 0 0 30px rgba(0, 150, 255, 0.2), inset 0 0 20px rgba(0, 100, 200, 0.1);
     pointer-events: none;
-    /* Let clicks pass through to canvas */
 }
 
-#health-info {
-    margin-top: 10px;
-    font-size: 14px;
+#level-info, #resources-display {
+    text-align: center;
+    min-width: 180px;
 }
 
-#ship-health, #station-health {
+.hud-label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    color: #00ccff;
+    text-shadow: 0 0 10px rgba(0, 200, 255, 0.8);
     margin-bottom: 5px;
 }
 
-#actions {
+.hud-value {
+    font-size: 24px;
+    font-weight: 900;
+    color: #ffffff;
+    text-shadow: 0 0 15px rgba(255, 255, 255, 0.5), 0 0 5px rgba(0, 200, 255, 0.8);
+    letter-spacing: 2px;
+}
+
+.resource-amount {
+    color: #00ff88;
+    text-shadow: 0 0 15px rgba(0, 255, 136, 0.8), 0 0 5px rgba(0, 255, 136, 0.5);
+}
+
+/* Side Panels - Ship and Station Status */
+#left-hud, #right-hud {
+    position: absolute;
+    top: 120px;
+    z-index: 10;
+    pointer-events: none;
+}
+
+#left-hud {
+    left: 20px;
+}
+
+#right-hud {
+    right: 20px;
+}
+
+.status-panel {
+    background: linear-gradient(135deg, rgba(10, 25, 47, 0.95) 0%, rgba(5, 15, 30, 0.9) 100%);
+    border: 2px solid rgba(0, 150, 255, 0.4);
+    border-radius: 12px;
+    padding: 15px 20px;
+    min-width: 280px;
+    box-shadow: 0 0 25px rgba(0, 100, 200, 0.3), inset 0 0 15px rgba(0, 50, 100, 0.2);
+    backdrop-filter: blur(10px);
+}
+
+.panel-header {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    color: #00ccff;
+    text-shadow: 0 0 10px rgba(0, 200, 255, 0.8);
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(0, 150, 255, 0.3);
+}
+
+.health-bar-container {
     margin-top: 10px;
-    pointer-events: auto;
-    /* Re-enable clicks for actions */
 }
 
-#action-list {
-    list-style-type: none;
-    padding: 0;
-    pointer-events: auto;
-    /* Re-enable clicks for list items */
+.health-label {
+    font-size: 10px;
+    color: #88ccff;
+    margin-bottom: 6px;
+    letter-spacing: 1px;
 }
 
-#action-list li {
-    background-color: #333;
-    padding: 5px 10px;
-    margin-bottom: 5px;
+.health-bar-bg {
+    height: 24px;
+    background: linear-gradient(180deg, rgba(0, 30, 60, 0.8) 0%, rgba(0, 15, 30, 0.9) 100%);
+    border: 1px solid rgba(0, 150, 255, 0.5);
+    border-radius: 12px;
+    overflow: hidden;
+    position: relative;
+    box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.6);
+}
+
+.health-bar {
+    height: 100%;
+    transition: width 0.3s ease;
+    position: relative;
+    border-radius: 12px;
+    box-shadow: 0 0 15px rgba(0, 255, 136, 0.6);
+}
+
+.ship-health-bar {
+    background: linear-gradient(90deg, #00ff88 0%, #00ccff 100%);
+}
+
+.station-health-bar {
+    background: linear-gradient(90deg, #0088ff 0%, #00ccff 100%);
+}
+
+.health-bar::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 50%;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.3) 0%, transparent 100%);
+    border-radius: 12px 12px 0 0;
+}
+
+.health-value {
+    font-size: 11px;
+    color: #ffffff;
+    margin-top: 4px;
+    text-align: right;
+    font-weight: 700;
+    text-shadow: 0 0 8px rgba(0, 200, 255, 0.5);
+}
+
+/* Weapon Upgrade UI */
+.weapon-upgrade-container {
+    margin-top: 20px;
+    padding-top: 15px;
+    border-top: 1px solid rgba(0, 150, 255, 0.3);
+}
+
+.weapon-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.weapon-label {
+    font-size: 12px;
+    color: #ffaa00;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-shadow: 0 0 10px rgba(255, 170, 0, 0.6);
+}
+
+.weapon-level {
+    font-size: 11px;
+    color: #00ccff;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-shadow: 0 0 10px rgba(0, 200, 255, 0.6);
+}
+
+.weapon-progress-bg {
+    height: 20px;
+    background: linear-gradient(180deg, rgba(0, 30, 60, 0.8) 0%, rgba(0, 15, 30, 0.9) 100%);
+    border: 1px solid rgba(0, 150, 255, 0.5);
+    border-radius: 10px;
+    overflow: hidden;
+    position: relative;
+    box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.6);
+    margin-bottom: 8px;
+}
+
+.weapon-progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, #ffaa00 0%, #ff6600 100%);
+    transition: width 0.3s ease;
+    position: relative;
+    border-radius: 10px;
+    box-shadow: 0 0 15px rgba(255, 170, 0, 0.6);
+}
+
+.weapon-progress-bar::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 50%;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.3) 0%, transparent 100%);
+    border-radius: 10px 10px 0 0;
+}
+
+.weapon-upgrade-info {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11px;
+    color: #88ccff;
+}
+
+.upgrade-button {
+    background: linear-gradient(135deg, rgba(0, 200, 100, 0.8) 0%, rgba(0, 150, 80, 0.9) 100%);
+    border: 2px solid rgba(0, 255, 136, 0.6);
+    border-radius: 6px;
+    color: #ffffff;
+    font-family: 'Orbitron', 'Courier New', monospace;
+    font-size: 12px;
+    font-weight: 700;
+    padding: 6px 12px;
     cursor: pointer;
+    transition: all 0.2s ease;
+    box-shadow: 0 0 15px rgba(0, 255, 136, 0.3);
+    text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+    letter-spacing: 1px;
+    pointer-events: auto;
 }
 
-#action-list li.disabled {
-    background-color: #555;
-    color: #aaa;
-    cursor: default;
+.upgrade-button:hover {
+    background: linear-gradient(135deg, rgba(0, 255, 136, 0.9) 0%, rgba(0, 200, 100, 1) 100%);
+    border-color: #00ff88;
+    box-shadow: 0 0 25px rgba(0, 255, 136, 0.6);
+    transform: scale(1.05);
+}
+
+.upgrade-button:active {
+    transform: scale(0.95);
+}
+
+.upgrade-button:disabled {
+    background: linear-gradient(135deg, rgba(60, 60, 60, 0.5) 0%, rgba(40, 40, 40, 0.6) 100%);
+    border-color: rgba(100, 100, 100, 0.3);
+    color: #666;
+    cursor: not-allowed;
+    box-shadow: none;
+    text-shadow: none;
+}
+
+.upgrade-button:disabled:hover {
+    transform: none;
+}
+
+/* Bottom Panel */
+#goal-panel {
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+    background: linear-gradient(135deg, rgba(10, 25, 47, 0.95) 0%, rgba(5, 15, 30, 0.9) 100%);
+    border: 2px solid rgba(0, 150, 255, 0.4);
+    border-radius: 12px;
+    padding: 15px 20px;
+    box-shadow: 0 0 25px rgba(0, 100, 200, 0.3), inset 0 0 15px rgba(0, 50, 100, 0.2);
+    backdrop-filter: blur(10px);
+    max-height: 300px;
+    overflow-y: auto;
+    min-width: 320px;
+    max-width: 400px;
+    pointer-events: none;
+}
+
+/* Custom Scrollbar */
+#goal-panel::-webkit-scrollbar {
+    width: 8px;
+}
+
+#goal-panel::-webkit-scrollbar-track {
+    background: rgba(0, 20, 40, 0.5);
+    border-radius: 4px;
+}
+
+#goal-panel::-webkit-scrollbar-thumb {
+    background: rgba(0, 150, 255, 0.5);
+    border-radius: 4px;
+}
+
+#goal-panel::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 180, 255, 0.7);
+}
+
+/* Goal Progress */
+.goal-description {
+    font-size: 13px;
+    color: #ffaa00;
+    margin-bottom: 12px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-shadow: 0 0 10px rgba(255, 170, 0, 0.6);
+}
+
+.goal-item {
+    font-size: 12px;
+    margin-bottom: 8px;
+    color: #888;
+    padding: 6px 10px;
+    background: rgba(0, 20, 40, 0.4);
+    border-radius: 6px;
+    border-left: 3px solid rgba(100, 100, 100, 0.5);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.goal-item.completed {
+    color: #00ff88;
+    font-weight: 700;
+    border-left-color: #00ff88;
+    background: rgba(0, 100, 50, 0.2);
+    box-shadow: 0 0 10px rgba(0, 255, 136, 0.2);
+}
+
+.goal-complete {
+    margin-top: 15px;
+    font-size: 14px;
+    color: #ffff00;
+    font-weight: 900;
+    text-align: center;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    padding: 10px;
+    background: rgba(100, 100, 0, 0.2);
+    border-radius: 8px;
+    border: 2px solid rgba(255, 255, 0, 0.5);
+    text-shadow: 0 0 15px rgba(255, 255, 0, 0.8);
+    animation: pulse 1.5s infinite;
+}
+
+.goal-incomplete {
+    margin-top: 10px;
+    font-size: 11px;
+    color: #666;
+    font-style: italic;
+    text-align: center;
+}
+
+@keyframes pulse {
+    0%, 100% {
+        box-shadow: 0 0 10px rgba(255, 255, 0, 0.3);
+    }
+    50% {
+        box-shadow: 0 0 25px rgba(255, 255, 0, 0.6);
+    }
+}
+
+
+/* Panel corner accents */
+.status-panel::before,
+#goal-panel::before {
+    content: '';
+    position: absolute;
+    top: -2px;
+    left: -2px;
+    width: 20px;
+    height: 20px;
+    border-left: 2px solid rgba(0, 200, 255, 0.8);
+    border-top: 2px solid rgba(0, 200, 255, 0.8);
+    border-top-left-radius: 12px;
+}
+
+.status-panel::after,
+#goal-panel::after {
+    content: '';
+    position: absolute;
+    bottom: -2px;
+    right: -2px;
+    width: 20px;
+    height: 20px;
+    border-right: 2px solid rgba(0, 200, 255, 0.8);
+    border-bottom: 2px solid rgba(0, 200, 255, 0.8);
+    border-bottom-right-radius: 12px;
+}
+
+/* Responsive adjustments for smaller screens */
+@media (max-width: 1400px) {
+    #goal-panel {
+        min-width: 300px;
+        max-width: 350px;
+    }
+
+    .status-panel {
+        min-width: 240px;
+    }
+}
+
+@media (max-width: 1024px) {
+    #top-hud {
+        gap: 20px;
+        padding: 15px 30px;
+    }
+
+    .hud-value {
+        font-size: 20px;
+    }
+
+    #goal-panel {
+        min-width: 250px;
+        max-width: 300px;
+        font-size: 11px;
+    }
+
+    .status-panel {
+        min-width: 200px;
+    }
 }

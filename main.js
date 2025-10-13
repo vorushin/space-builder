@@ -6,17 +6,36 @@ async function init() {
     document.body.appendChild(app.canvas);
 
     // UI Elements
+    const levelNameSpan = document.getElementById('level-name');
+    const goalProgressDiv = document.getElementById('goal-progress');
     const resourceCountSpan = document.getElementById('resource-count');
-    const actionList = document.getElementById('action-list');
     const shipHealthSpan = document.getElementById('ship-health-value');
     const stationHealthSpan = document.getElementById('station-health-value');
+    const shipHealthBar = document.getElementById('ship-health-bar');
+    const stationHealthBar = document.getElementById('station-health-bar');
+    const shipWeaponLabel = document.getElementById('ship-weapon-label');
+    const shipWeaponLevel = document.getElementById('ship-weapon-level');
+    const shipWeaponProgress = document.getElementById('ship-weapon-progress');
+    const shipWeaponCost = document.getElementById('ship-weapon-cost');
+    const shipUpgradeBtn = document.getElementById('ship-upgrade-btn');
+    const stationLevelLabel = document.getElementById('station-level-label');
+    const stationLevelDisplay = document.getElementById('station-level-display');
+    const stationLevelProgress = document.getElementById('station-level-progress');
+    const stationLevelCost = document.getElementById('station-level-cost');
+    const stationLevelBtn = document.getElementById('station-level-btn');
+    const stationGunLabel = document.getElementById('station-gun-label');
+    const stationGunLevelDisplay = document.getElementById('station-gun-level-display');
+    const stationGunProgress = document.getElementById('station-gun-progress');
+    const stationGunCost = document.getElementById('station-gun-cost');
+    const stationGunBtn = document.getElementById('station-gun-btn');
 
     // Game State
     let resources = 0;
-    let actionsNeedUpdate = true; // Flag to track when UI needs refresh
+    let upgradeUIUpdate = true; // Flag to track when upgrade UI needs refresh
     let lastProductionTime = Date.now();
     let lastStationShotTime = 0;
     const gameState = {
+        currentLevel: 0, // 0 = Training Zone, 1 = Asteroid Belt, 2 = Nebula Field, 3 = Alien Territory
         stationLevel: 0,
         stationHealth: 0,
         stationMaxHealth: 0,
@@ -30,6 +49,86 @@ async function init() {
         }
     };
 
+    // Level configuration
+    const LEVEL_CONFIG = {
+        0: {
+            name: 'Training Zone',
+            bgColor: 0x001010,
+            starColors: [0xaadddd, 0x88cccc, 0x66aaaa],
+            requirements: { stationLevel: 0, stationGunLevel: 0, shipGunLevel: 2 },
+            asteroid: {
+                fillColor: 0x88cccc,
+                strokeColor: 0xaadddd,
+                speedMultiplier: 1.0,
+                healthMultiplier: 1.0
+            },
+            enemy: {
+                fillColor: 0xff6666,
+                strokeColor: 0xcc4444,
+                speedMultiplier: 1.0,
+                healthMultiplier: 1.0,
+                damageMultiplier: 1.0
+            }
+        },
+        1: {
+            name: 'Asteroid Belt',
+            bgColor: 0x000000,
+            starColors: [0xffffff, 0xcccccc, 0xaaaaaa],
+            requirements: { stationLevel: 3, stationGunLevel: 3, shipGunLevel: 3 },
+            asteroid: {
+                fillColor: 0x888888,
+                strokeColor: 0xaaaaaa,
+                speedMultiplier: 1.2,
+                healthMultiplier: 1.3
+            },
+            enemy: {
+                fillColor: 0xff3333,
+                strokeColor: 0xaa0000,
+                speedMultiplier: 1.2,
+                healthMultiplier: 1.4,
+                damageMultiplier: 1.3
+            }
+        },
+        2: {
+            name: 'Nebula Field',
+            bgColor: 0x0a0520,
+            starColors: [0xaa88ff, 0x88aaff, 0xccaaff, 0xff88ff],
+            requirements: { stationLevel: 6, stationGunLevel: 6, shipGunLevel: 6 },
+            asteroid: {
+                fillColor: 0x8866dd,
+                strokeColor: 0xaa88ff,
+                speedMultiplier: 1.4,
+                healthMultiplier: 1.6
+            },
+            enemy: {
+                fillColor: 0xff00ff,
+                strokeColor: 0xaa00aa,
+                speedMultiplier: 1.4,
+                healthMultiplier: 1.8,
+                damageMultiplier: 1.6
+            }
+        },
+        3: {
+            name: 'Alien Territory',
+            bgColor: 0x200a00,
+            starColors: [0xffaa44, 0xff8844, 0xffcc44, 0xff6644],
+            requirements: { stationLevel: 10, stationGunLevel: 10, shipGunLevel: 10 },
+            asteroid: {
+                fillColor: 0xcc6633,
+                strokeColor: 0xff8844,
+                speedMultiplier: 1.6,
+                healthMultiplier: 2.0
+            },
+            enemy: {
+                fillColor: 0xff4400,
+                strokeColor: 0xaa2200,
+                speedMultiplier: 1.6,
+                healthMultiplier: 2.2,
+                damageMultiplier: 2.0
+            }
+        }
+    };
+
     // Containers
     const backgroundContainer = new PIXI.Container();
     const gameContainer = new PIXI.Container();
@@ -38,15 +137,21 @@ async function init() {
 
     // Starry Background
     function createStars() {
+        backgroundContainer.removeChildren(); // Clear existing stars
+        const config = LEVEL_CONFIG[gameState.currentLevel];
         const numStars = 200;
         for (let i = 0; i < numStars; i++) {
             const star = new PIXI.Graphics();
             star.circle(0, 0, Math.random() * 2);
-            star.fill({ color: 0xffffff, alpha: Math.random() });
+            // Pick random color from level's star colors
+            const colorIndex = Math.floor(Math.random() * config.starColors.length);
+            star.fill({ color: config.starColors[colorIndex], alpha: Math.random() });
             star.x = Math.random() * app.screen.width;
             star.y = Math.random() * app.screen.height;
             backgroundContainer.addChild(star);
         }
+        // Update background color
+        app.renderer.background.color = config.bgColor;
     }
     createStars();
 
@@ -195,73 +300,333 @@ async function init() {
         // Base stats
         rocket.thrust = 0.1 * gameState.ship.speedLevel;
         rocket.rotationSpeed = 0.05 * gameState.ship.speedLevel;
-        const scale = 1 + (gameState.ship.sizeLevel - 1) * 0.2;
+
+        // Progressive size scaling based on weapon level - ship grows with power!
+        const weaponScale = 1 + (gameState.ship.gunLevel * 0.08); // +8% per level
+        const sizeScale = 1 + (gameState.ship.sizeLevel - 1) * 0.2;
+        const scale = sizeScale * weaponScale;
         rocket.scale.set(scale);
         rocket.r = 15 * scale; // Collision radius
 
         // Redraw graphics based on gun level
         rocketBody.clear();
-        rocketBody.moveTo(15, 0).lineTo(-10, -10).lineTo(-5, 0).lineTo(-10, 10).closePath()
-            .fill(0x3399ff).stroke({ width: 2, color: 0xffffff });
 
-        // Gun visuals based on level
-        if (gameState.ship.gunLevel >= 1) {
-            // Basic guns
-            rocketBody.rect(0, -12, 5, 2).fill(0xaaaaaa);
-            rocketBody.rect(0, 10, 5, 2).fill(0xaaaaaa);
+        const level = gameState.ship.gunLevel;
+
+        // Main hull - gets more elaborate with levels
+        if (level >= 1) {
+            // Core body - aggressive angular fighter shape
+            rocketBody.moveTo(22, 0) // Sharp nose
+                .lineTo(15, -4)
+                .lineTo(8, -7)
+                .lineTo(-6, -10)
+                .lineTo(-10, -8)
+                .lineTo(-12, -6)
+                .lineTo(-13, 0)
+                .lineTo(-12, 6)
+                .lineTo(-10, 8)
+                .lineTo(-6, 10)
+                .lineTo(8, 7)
+                .lineTo(15, 4)
+                .closePath()
+                .fill(0x2266ff);
+
+            // Speed lines on hull
+            rocketBody.rect(4, -2, 8, 0.5).fill(0x4488ff);
+            rocketBody.rect(4, 1.5, 8, 0.5).fill(0x4488ff);
+
+            // Cockpit with gradient effect - more angular
+            rocketBody.moveTo(12, -2)
+                .lineTo(10, -3)
+                .lineTo(6, -3)
+                .lineTo(4, 0)
+                .lineTo(6, 3)
+                .lineTo(10, 3)
+                .lineTo(12, 2)
+                .closePath()
+                .fill(0x00ccff);
+            rocketBody.circle(8, 0, 2).fill(0xaaffff);
+
+            // Engine intakes - larger and more prominent
+            rocketBody.rect(-13, -6, 4, 12).fill(0x1144aa);
+            rocketBody.circle(-11, -6, 1.5).fill(0x0088ff);
+            rocketBody.circle(-11, 6, 1.5).fill(0x0088ff);
+
+            // Wing blades - sharp and dangerous
+            rocketBody.moveTo(12, -8)
+                .lineTo(18, -9)
+                .lineTo(19, -8)
+                .lineTo(13, -7)
+                .closePath()
+                .fill(0x4488ff);
+            rocketBody.moveTo(12, 8)
+                .lineTo(18, 9)
+                .lineTo(19, 8)
+                .lineTo(13, 7)
+                .closePath()
+                .fill(0x4488ff);
+
+            // Basic wing guns
+            rocketBody.rect(14, -10, 7, 2.5).fill(0x5599ff);
+            rocketBody.rect(14, 7.5, 7, 2.5).fill(0x5599ff);
+            rocketBody.circle(21, -8.5, 1.8).fill(0xffaa00);
+            rocketBody.circle(21, 8.5, 1.8).fill(0xffaa00);
         }
-        if (gameState.ship.gunLevel >= 2) {
-            // Longer barrels
-            rocketBody.rect(5, -12, 3, 2).fill(0xff8800);
-            rocketBody.rect(5, 10, 3, 2).fill(0xff8800);
+
+        if (level >= 2) {
+            // Rapid Fire - extended barrels with heat vents
+            rocketBody.rect(18, -10, 8, 3).fill(0xff8800);
+            rocketBody.rect(18, 7, 8, 3).fill(0xff8800);
+            // Heat vents - more aggressive
+            rocketBody.rect(20, -8, 1.5, 0.8).fill(0xff3300);
+            rocketBody.rect(23, -8, 1.5, 0.8).fill(0xff3300);
+            rocketBody.rect(20, 7.2, 1.5, 0.8).fill(0xff3300);
+            rocketBody.rect(23, 7.2, 1.5, 0.8).fill(0xff3300);
+            // Glowing tips - larger and more dangerous
+            rocketBody.circle(26, -8.5, 2.2).fill(0xffcc00);
+            rocketBody.circle(26, 8.5, 2.2).fill(0xffcc00);
+            rocketBody.circle(26, -8.5, 1.2).fill(0xffff00);
+            rocketBody.circle(26, 8.5, 1.2).fill(0xffff00);
+            // Speed stripes
+            rocketBody.rect(0, -3, 10, 0.8).fill(0xff8800);
+            rocketBody.rect(0, 2.2, 10, 0.8).fill(0xff8800);
         }
-        if (gameState.ship.gunLevel >= 3) {
-            // Additional side guns
-            rocketBody.rect(-5, -8, 4, 1.5).fill(0xaaaaaa);
-            rocketBody.rect(-5, 6.5, 4, 1.5).fill(0xaaaaaa);
+
+        if (level >= 3) {
+            // Heavy Cannons - reinforced hull sections and wing extensions
+            rocketBody.rect(-10, -12, 6, 3).fill(0x3377ff);
+            rocketBody.rect(-10, 9, 6, 3).fill(0x3377ff);
+            // Extended wing blades
+            rocketBody.moveTo(10, -11)
+                .lineTo(18, -13)
+                .lineTo(20, -12)
+                .lineTo(12, -10)
+                .closePath()
+                .fill(0x5599ff);
+            rocketBody.moveTo(10, 11)
+                .lineTo(18, 13)
+                .lineTo(20, 12)
+                .lineTo(12, 10)
+                .closePath()
+                .fill(0x5599ff);
+            // Armor plating - angular and aggressive
+            rocketBody.moveTo(2, -8)
+                .lineTo(12, -8)
+                .lineTo(11, -6.5)
+                .lineTo(2, -6.5)
+                .closePath()
+                .fill(0x1155cc);
+            rocketBody.moveTo(2, 8)
+                .lineTo(12, 8)
+                .lineTo(11, 6.5)
+                .lineTo(2, 6.5)
+                .closePath()
+                .fill(0x1155cc);
+            // Heavy gun mounts - larger
+            rocketBody.circle(-7, -10.5, 2.5).fill(0x8888ff);
+            rocketBody.circle(-7, 10.5, 2.5).fill(0x8888ff);
+            rocketBody.circle(-7, -10.5, 1.2).fill(0xaaaaff);
+            rocketBody.circle(-7, 10.5, 1.2).fill(0xaaaaff);
         }
-        if (gameState.ship.gunLevel >= 4) {
-            // Power cores (multi-shot)
-            rocketBody.circle(-3, -10, 1.5).fill(0xff0000);
-            rocketBody.circle(-3, 10, 1.5).fill(0xff0000);
+
+        if (level >= 4) {
+            // Triple Shot - power cores visible with energy network
+            rocketBody.circle(-5, -13, 3).fill(0xff0000);
+            rocketBody.circle(-5, -13, 2).fill(0xff6600);
+            rocketBody.circle(-5, -13, 1).fill(0xffaa00);
+            rocketBody.circle(-5, 13, 3).fill(0xff0000);
+            rocketBody.circle(-5, 13, 2).fill(0xff6600);
+            rocketBody.circle(-5, 13, 1).fill(0xffaa00);
+            // Energy conduits - thicker and more visible
+            rocketBody.rect(8, -12, 12, 1).fill(0xff6600);
+            rocketBody.rect(8, 11, 12, 1).fill(0xff6600);
+            // Additional conduit lines
+            rocketBody.rect(-5, -13, 15, 0.6).fill(0xff8800);
+            rocketBody.rect(-5, 12.4, 15, 0.6).fill(0xff8800);
+            // Pulsing central core - larger
+            rocketBody.circle(3, 0, 2.8).fill(0xff3300);
+            rocketBody.circle(3, 0, 1.8).fill(0xff6600);
+            // Power distribution nodes
+            rocketBody.circle(10, -11, 1.2).fill(0xff6600);
+            rocketBody.circle(10, 11, 1.2).fill(0xff6600);
         }
-        if (gameState.ship.gunLevel >= 5) {
-            // Plasma weapon tips
-            rocketBody.rect(8, -11, 2, 1).fill(0xffff00);
-            rocketBody.rect(8, 10, 2, 1).fill(0xffff00);
-            rocketBody.circle(0, 0, 2).fill(0xffff00);
+
+        if (level >= 5) {
+            // Plasma Weapons - massive glowing plasma chambers
+            rocketBody.circle(16, -9, 3.5).fill(0xffff00);
+            rocketBody.circle(16, 9, 3.5).fill(0xffff00);
+            rocketBody.circle(16, -9, 2.2).fill(0xffffaa);
+            rocketBody.circle(16, 9, 2.2).fill(0xffffaa);
+            rocketBody.circle(16, -9, 1).fill(0xffffff);
+            rocketBody.circle(16, 9, 1).fill(0xffffff);
+            // Plasma coils network
+            rocketBody.circle(-2, -8, 2).fill(0xffff00);
+            rocketBody.circle(-2, 8, 2).fill(0xffff00);
+            rocketBody.circle(6, -9, 1.8).fill(0xffff00);
+            rocketBody.circle(6, 9, 1.8).fill(0xffff00);
+            // Central plasma reactor core
+            rocketBody.circle(6, 0, 4).fill(0xffff00);
+            rocketBody.circle(6, 0, 2.8).fill(0xffffaa);
+            rocketBody.circle(6, 0, 1.5).fill(0xffffff);
+            // Plasma energy glow around ship
+            rocketBody.circle(6, 0, 6).stroke({ width: 1, color: 0xffff00, alpha: 0.4 });
         }
-        if (gameState.ship.gunLevel >= 6) {
-            // Laser barrage - additional turrets
-            rocketBody.rect(-8, -14, 3, 1.5).fill(0x00ffff);
-            rocketBody.rect(-8, 12.5, 3, 1.5).fill(0x00ffff);
+
+        if (level >= 6) {
+            // Laser Barrage - massive turret arrays
+            rocketBody.rect(-12, -15, 6, 3.5).fill(0x00ffff);
+            rocketBody.rect(-12, 11.5, 6, 3.5).fill(0x00ffff);
+            // Laser focusing crystal arrays - bigger and brighter
+            rocketBody.circle(-9, -13, 2.5).fill(0x00ffff);
+            rocketBody.circle(-9, 13, 2.5).fill(0x00ffff);
+            rocketBody.circle(-9, -13, 1.5).fill(0xaaffff);
+            rocketBody.circle(-9, 13, 1.5).fill(0xaaffff);
+            rocketBody.circle(-9, -13, 0.8).fill(0xffffff);
+            rocketBody.circle(-9, 13, 0.8).fill(0xffffff);
+            // Extended wing laser arrays
+            rocketBody.rect(4, -14, 10, 1.5).fill(0x00cccc);
+            rocketBody.rect(4, 12.5, 10, 1.5).fill(0x00cccc);
+            // Laser emitter nodes
+            rocketBody.circle(6, -13, 1.5).fill(0x00ffff);
+            rocketBody.circle(10, -13, 1.5).fill(0x00ffff);
+            rocketBody.circle(6, 13, 1.5).fill(0x00ffff);
+            rocketBody.circle(10, 13, 1.5).fill(0x00ffff);
         }
-        if (gameState.ship.gunLevel >= 7) {
-            // Ion pulse - energy capacitors
-            rocketBody.circle(-6, 0, 2.5).fill(0x0088ff);
-            rocketBody.circle(-6, 0, 1.5).fill(0x00ccff);
+
+        if (level >= 7) {
+            // Ion Pulse - massive energy field generators
+            rocketBody.circle(-8, 0, 5).stroke({ width: 2.5, color: 0x0088ff, alpha: 0.7 });
+            rocketBody.circle(-8, 0, 4).fill(0x0088ff);
+            rocketBody.circle(-8, 0, 2.5).fill(0x00ccff);
+            rocketBody.circle(-8, 0, 1.2).fill(0xaaffff);
+            // Ion emitters on wings - larger
+            rocketBody.circle(10, -11, 2.8).fill(0x00aaff);
+            rocketBody.circle(10, 11, 2.8).fill(0x00aaff);
+            rocketBody.circle(10, -11, 1.5).fill(0xaaffff);
+            rocketBody.circle(10, 11, 1.5).fill(0xaaffff);
+            // Energy field effect - multiple layers
+            rocketBody.circle(0, 0, 8).stroke({ width: 1.5, color: 0x00ccff, alpha: 0.4 });
+            rocketBody.circle(0, 0, 10).stroke({ width: 1, color: 0x00aaff, alpha: 0.3 });
+            // Ion field projectors
+            rocketBody.circle(0, -10, 1.8).fill(0x00ccff);
+            rocketBody.circle(0, 10, 1.8).fill(0x00ccff);
         }
-        if (gameState.ship.gunLevel >= 8) {
-            // Quantum cannons - quantum cores
+
+        if (level >= 8) {
+            // Quantum Cannons - massive reality-bending weapons
+            rocketBody.circle(18, -10, 4).fill(0xff00ff);
+            rocketBody.circle(18, 10, 4).fill(0xff00ff);
+            rocketBody.circle(18, -10, 2.5).fill(0xff88ff);
+            rocketBody.circle(18, 10, 2.5).fill(0xff88ff);
+            rocketBody.circle(18, -10, 1.2).fill(0xffaaff);
+            rocketBody.circle(18, 10, 1.2).fill(0xffaaff);
+            // Quantum field projectors - larger arrays
+            rocketBody.rect(12, -13, 6, 2).fill(0xff00ff);
+            rocketBody.rect(12, 11, 6, 2).fill(0xff00ff);
+            // Reality warping rings around ship
+            rocketBody.circle(0, 0, 10).stroke({ width: 2, color: 0xff00ff, alpha: 0.5 });
+            rocketBody.circle(0, 0, 12).stroke({ width: 1.5, color: 0xff88ff, alpha: 0.35 });
+            rocketBody.circle(0, 0, 14).stroke({ width: 1, color: 0xffaaff, alpha: 0.25 });
+            // Quantum distortion nodes
             rocketBody.circle(5, -12, 2).fill(0xff00ff);
-            rocketBody.circle(5, 10, 2).fill(0xff00ff);
-            rocketBody.rect(10, -12, 3, 1).fill(0xff00ff);
-            rocketBody.rect(10, 10, 3, 1).fill(0xff00ff);
-        }
-        if (gameState.ship.gunLevel >= 9) {
-            // Antimatter guns - containment fields
-            rocketBody.circle(3, 0, 4).stroke({ width: 1, color: 0xff0000, alpha: 0.5 });
-            rocketBody.circle(3, 0, 3).fill(0xff0000);
-        }
-        if (gameState.ship.gunLevel >= 10) {
-            // Singularity weapon - black hole core
-            rocketBody.circle(0, 0, 5).fill(0x000000);
-            rocketBody.circle(0, 0, 6).stroke({ width: 2, color: 0xffffff });
-            rocketBody.circle(0, 0, 8).stroke({ width: 1, color: 0xffffff, alpha: 0.3 });
+            rocketBody.circle(5, 12, 2).fill(0xff00ff);
+            rocketBody.circle(12, -8, 1.5).fill(0xff88ff);
+            rocketBody.circle(12, 8, 1.5).fill(0xff88ff);
         }
 
+        if (level >= 9) {
+            // Antimatter Guns - DANGER! Massive containment system
+            rocketBody.circle(12, 0, 6).stroke({ width: 3, color: 0xff0000, alpha: 0.8 });
+            rocketBody.circle(12, 0, 5).fill(0xff0000);
+            rocketBody.circle(12, 0, 3.5).fill(0xff6666);
+            rocketBody.circle(12, 0, 2).fill(0xffaaaa);
+            // Antimatter containment pods - larger
+            rocketBody.circle(5, -11, 3.5).fill(0xff0000);
+            rocketBody.circle(5, 11, 3.5).fill(0xff0000);
+            rocketBody.circle(5, -11, 2.2).fill(0xff6666);
+            rocketBody.circle(5, 11, 2.2).fill(0xff6666);
+            rocketBody.circle(5, -11, 1).fill(0xffaaaa);
+            rocketBody.circle(5, 11, 1).fill(0xffaaaa);
+            // Warning stripes - more prominent
+            rocketBody.rect(-6, -5, 10, 1.5).fill(0xffff00);
+            rocketBody.rect(-6, 3.5, 10, 1.5).fill(0xffff00);
+            rocketBody.rect(-6, -2, 10, 1.5).fill(0xff0000);
+            // Hazard symbols
+            rocketBody.moveTo(-3, -4)
+                .lineTo(-1, -4)
+                .lineTo(-2, -2)
+                .closePath()
+                .fill(0xff0000);
+            rocketBody.moveTo(-3, 4)
+                .lineTo(-1, 4)
+                .lineTo(-2, 6)
+                .closePath()
+                .fill(0xff0000);
+        }
+
+        if (level >= 10) {
+            // Singularity Weapon - ULTIMATE POWER! Black hole at the core
+            // The singularity core
+            rocketBody.circle(8, 0, 7).fill(0x000000);
+            rocketBody.circle(8, 0, 8.5).stroke({ width: 3, color: 0xffffff });
+            rocketBody.circle(8, 0, 10.5).stroke({ width: 2, color: 0xffffff, alpha: 0.7 });
+            rocketBody.circle(8, 0, 13).stroke({ width: 2, color: 0x8888ff, alpha: 0.5 });
+            // Event horizon rings - multiple layers
+            rocketBody.circle(8, 0, 16).stroke({ width: 2, color: 0xff00ff, alpha: 0.4 });
+            rocketBody.circle(8, 0, 18).stroke({ width: 1.5, color: 0x00ffff, alpha: 0.35 });
+            rocketBody.circle(8, 0, 20).stroke({ width: 1, color: 0xffff00, alpha: 0.25 });
+            // Reality distortion lines - more dramatic
+            for (let i = 0; i < 12; i++) {
+                const angle = (i / 12) * Math.PI * 2;
+                const x1 = 8 + Math.cos(angle) * 10;
+                const y1 = Math.sin(angle) * 10;
+                const x2 = 8 + Math.cos(angle) * 16;
+                const y2 = Math.sin(angle) * 16;
+                rocketBody.moveTo(x1, y1).lineTo(x2, y2).stroke({ width: 1.5, color: 0xffffff, alpha: 0.5 });
+            }
+            // Accretion disk effect
+            for (let i = 0; i < 6; i++) {
+                const angle = (i / 6) * Math.PI * 2;
+                const x = 8 + Math.cos(angle) * 14;
+                const y = Math.sin(angle) * 14;
+                rocketBody.circle(x, y, 2).fill(0xff00ff);
+                rocketBody.circle(x, y, 1).fill(0xffffff);
+            }
+            // Ultimate power glow - massive
+            rocketBody.circle(0, 0, 18).stroke({ width: 3, color: 0xffffff, alpha: 0.4 });
+            rocketBody.circle(0, 0, 22).stroke({ width: 2, color: 0xaaaaff, alpha: 0.3 });
+            // Gravitational lens effects
+            rocketBody.circle(-5, -16, 2.5).fill(0xffffff);
+            rocketBody.circle(-5, 16, 2.5).fill(0xffffff);
+            rocketBody.circle(15, -12, 2.5).fill(0xffffff);
+            rocketBody.circle(15, 12, 2.5).fill(0xffffff);
+        }
+
+        // Engine flames (enhanced with level)
         rocketEngine.clear();
-        rocketEngine.moveTo(-10, -5).lineTo(-20 * scale, 0).lineTo(-10, 5).closePath().fill(0xff3300);
+        const engineWidth = 4 + level * 0.3;
+        const engineLength = 12 + level * 1.5;
+        rocketEngine.moveTo(-10, -engineWidth)
+            .lineTo(-10 - engineLength * scale, 0)
+            .lineTo(-10, engineWidth)
+            .closePath()
+            .fill(0xff3300);
+
+        // Inner bright flame
+        rocketEngine.moveTo(-10, -engineWidth * 0.6)
+            .lineTo(-10 - engineLength * 0.7 * scale, 0)
+            .lineTo(-10, engineWidth * 0.6)
+            .closePath()
+            .fill(0xffaa00);
+
+        // Level 5+ plasma trail
+        if (level >= 5) {
+            rocketEngine.moveTo(-10, -engineWidth * 0.3)
+                .lineTo(-10 - engineLength * 0.5 * scale, 0)
+                .lineTo(-10, engineWidth * 0.3)
+                .closePath()
+                .fill(0xffff00);
+        }
     }
     updateShipStats();
 
@@ -407,6 +772,11 @@ async function init() {
         const radius = r || Math.random() * 20 + 15;
         const asteroid = new PIXI.Graphics();
 
+        // Get level-specific asteroid colors
+        const levelConfig = LEVEL_CONFIG[gameState.currentLevel];
+        const fillColor = levelConfig.asteroid.fillColor;
+        const strokeColor = levelConfig.asteroid.strokeColor;
+
         // Draw irregular shape
         asteroid.moveTo(radius, 0);
         for (let i = 1; i < 8; i++) {
@@ -415,7 +785,7 @@ async function init() {
             asteroid.lineTo(Math.cos(angle) * dist, Math.sin(angle) * dist);
         }
         asteroid.closePath();
-        asteroid.fill(0x888888).stroke({ width: 2, color: 0xaaaaaa });
+        asteroid.fill(fillColor).stroke({ width: 2, color: strokeColor });
 
         // Position: if x,y provided, use them; if offscreen, spawn outside; otherwise spawn on screen
         if (x !== undefined && y !== undefined) {
@@ -445,10 +815,13 @@ async function init() {
         }
 
         asteroid.r = radius;
-        asteroid.vx = (Math.random() - 0.5) * 2;
-        asteroid.vy = (Math.random() - 0.5) * 2;
+        // Apply level-specific speed multiplier
+        const speedMult = levelConfig.asteroid.speedMultiplier;
+        asteroid.vx = (Math.random() - 0.5) * 2 * speedMult;
+        asteroid.vy = (Math.random() - 0.5) * 2 * speedMult;
         asteroid.rotationSpeed = (Math.random() - 0.5) * 0.05;
-        asteroid.resources = Math.floor(radius * 2);
+        // Apply level-specific health multiplier
+        asteroid.resources = Math.floor(radius * 2 * levelConfig.asteroid.healthMultiplier);
 
         gameContainer.addChild(asteroid);
         asteroids.push(asteroid);
@@ -466,6 +839,11 @@ async function init() {
     function createEnemyShip() {
         const enemy = new PIXI.Container();
 
+        // Get level-specific enemy properties
+        const levelConfig = LEVEL_CONFIG[gameState.currentLevel];
+        const healthMult = levelConfig.enemy.healthMultiplier;
+        const speedMult = levelConfig.enemy.speedMultiplier;
+
         // Random size: small (10-15), medium (15-25), large (25-35)
         const sizeType = Math.random();
         let size, health, speed, fireRate, accuracy;
@@ -473,22 +851,22 @@ async function init() {
         if (sizeType < 0.5) {
             // Small - fast, low HP
             size = 10 + Math.random() * 5;
-            health = 20 + size * 2;
-            speed = 1.5 + Math.random() * 0.5;
+            health = (20 + size * 2) * healthMult;
+            speed = (1.5 + Math.random() * 0.5) * speedMult;
             fireRate = 1500; // ms
             accuracy = 0.3; // Lower = less accurate
         } else if (sizeType < 0.85) {
             // Medium - balanced
             size = 15 + Math.random() * 10;
-            health = 40 + size * 3;
-            speed = 1 + Math.random() * 0.5;
+            health = (40 + size * 3) * healthMult;
+            speed = (1 + Math.random() * 0.5) * speedMult;
             fireRate = 2000;
             accuracy = 0.25;
         } else {
             // Large - slow, high HP
             size = 25 + Math.random() * 10;
-            health = 80 + size * 4;
-            speed = 0.5 + Math.random() * 0.3;
+            health = (80 + size * 4) * healthMult;
+            speed = (0.5 + Math.random() * 0.3) * speedMult;
             fireRate = 2500;
             accuracy = 0.2;
         }
@@ -501,6 +879,7 @@ async function init() {
         enemy.accuracy = accuracy;
         enemy.lastShotTime = Date.now();
         enemy.r = size; // Collision radius
+        enemy.damageMult = levelConfig.enemy.damageMultiplier; // Store damage multiplier
 
         // Spawn outside screen
         const side = Math.floor(Math.random() * 4);
@@ -518,19 +897,21 @@ async function init() {
             enemy.y = Math.random() * app.screen.height;
         }
 
-        // Draw enemy ship (red/hostile appearance)
+        // Draw enemy ship with level-specific colors
+        const fillColor = levelConfig.enemy.fillColor;
+        const strokeColor = levelConfig.enemy.strokeColor;
         const g = new PIXI.Graphics();
         g.moveTo(size, 0)
             .lineTo(-size * 0.7, -size * 0.7)
             .lineTo(-size * 0.4, 0)
             .lineTo(-size * 0.7, size * 0.7)
             .closePath()
-            .fill(0xff0000)
-            .stroke({ width: 2, color: 0xaa0000 });
+            .fill(fillColor)
+            .stroke({ width: 2, color: strokeColor });
 
         // Weapons
-        g.rect(size * 0.5, -size * 0.3, size * 0.4, size * 0.15).fill(0xaa0000);
-        g.rect(size * 0.5, size * 0.15, size * 0.4, size * 0.15).fill(0xaa0000);
+        g.rect(size * 0.5, -size * 0.3, size * 0.4, size * 0.15).fill(strokeColor);
+        g.rect(size * 0.5, size * 0.15, size * 0.4, size * 0.15).fill(strokeColor);
 
         enemy.addChild(g);
         gameContainer.addChild(enemy);
@@ -538,93 +919,224 @@ async function init() {
     }
 
     // Actions
-    function getActions() {
-        const acts = [];
+    // Check for level progression
+    function checkLevelProgression() {
+        const nextLevel = gameState.currentLevel + 1;
+        if (nextLevel > 3) return false; // Max level reached
 
-        // Station Actions
-        const nextStationLevel = gameState.stationLevel + 1;
-        if (nextStationLevel <= 10) {
-            const stationNames = [
-                'Core Module',        // Level 1
-                'Solar Array',        // Level 2
-                'Docking Bay',        // Level 3
-                'Defense Grid',       // Level 4
-                'Mining Hub',         // Level 5
-                'Research Lab',       // Level 6
-                'Command Center',     // Level 7
-                'Shield Generator',   // Level 8
-                'Production Facility',// Level 9
-                'Mega Station'        // Level 10
-            ];
-            const baseCost = 100;
-            const cost = Math.floor(baseCost * Math.pow(1.5, nextStationLevel - 1)); // Exponential cost scaling
+        const requirements = LEVEL_CONFIG[gameState.currentLevel].requirements;
 
-            acts.push({
-                name: `Build Station Lvl ${nextStationLevel}: ${stationNames[nextStationLevel - 1]}`,
-                cost: cost,
-                perform: () => {
-                    gameState.stationLevel++;
-                    gameState.stationMaxHealth = gameState.stationLevel * 200; // 200 HP per level
-                    gameState.stationHealth = gameState.stationMaxHealth;
-                    updateStationGraphics();
-                    actionsNeedUpdate = true;
-                }
-            });
+        // Check if all requirements are met
+        // For Level 0, only check ship gun level (no station required)
+        if (gameState.currentLevel === 0) {
+            return gameState.ship.gunLevel >= requirements.shipGunLevel;
         }
 
-        // Gun upgrades (up to level 10)
-        if (gameState.ship.gunLevel < 10) {
-            const gunCost = gameState.ship.gunLevel === 0 ? 0 : Math.floor(150 * Math.pow(1.4, gameState.ship.gunLevel - 1));
-            const gunNames = [
-                'Basic Gun',           // Level 1
-                'Rapid Fire',          // Level 2
-                'Heavy Cannons',       // Level 3
-                'Triple Shot',         // Level 4
-                'Plasma Weapons',      // Level 5
-                'Laser Barrage',       // Level 6
-                'Ion Pulse',           // Level 7
-                'Quantum Cannons',     // Level 8
-                'Antimatter Guns',     // Level 9
-                'Singularity Weapon'   // Level 10
-            ];
-            acts.push({
-                name: `Upgrade Gun Lvl ${gameState.ship.gunLevel + 1}: ${gunNames[gameState.ship.gunLevel]}`,
-                cost: gunCost,
-                perform: () => {
-                    gameState.ship.gunLevel++;
-                    updateShipStats();
-                    actionsNeedUpdate = true;
-                }
-            });
+        // For other levels, check all requirements
+        if (gameState.stationLevel >= requirements.stationLevel &&
+            gameState.stationGunLevel >= requirements.stationGunLevel &&
+            gameState.ship.gunLevel >= requirements.shipGunLevel) {
+            return true;
+        }
+        return false;
+    }
+
+    // Create teleportation visual effect
+    function createTeleportEffect(x, y, radius) {
+        const numRings = 5;
+        const rings = [];
+
+        for (let i = 0; i < numRings; i++) {
+            const ring = new PIXI.Graphics();
+            ring.x = x;
+            ring.y = y;
+            ring.alpha = 1.0;
+            ring.scale.set(0.1);
+            ring.targetScale = 1 + i * 0.5;
+            ring.life = 60; // frames
+            ring.maxLife = 60;
+
+            // Draw ring based on current level
+            const config = LEVEL_CONFIG[gameState.currentLevel];
+            const ringColor = config.starColors[i % config.starColors.length];
+            ring.circle(0, 0, radius + i * 10).stroke({ width: 3, color: ringColor, alpha: 0.8 });
+
+            gameContainer.addChild(ring);
+            rings.push(ring);
         }
 
-        // Station Gun upgrades (up to level 10, requires Station Level 1+)
-        if (gameState.stationLevel >= 1 && gameState.stationGunLevel < 10) {
-            const stationGunCost = Math.floor(200 * Math.pow(1.5, gameState.stationGunLevel));
-            const stationGunNames = [
-                'Defense Turret',      // Level 1
-                'Twin Cannons',        // Level 2
-                'Missile Battery',     // Level 3
-                'Flak Array',          // Level 4
-                'Beam Weapons',        // Level 5
-                'Point Defense',       // Level 6
-                'Railguns',            // Level 7
-                'Particle Beams',      // Level 8
-                'Nova Cannons',        // Level 9
-                'Titan Weapon Array'   // Level 10
-            ];
-            acts.push({
-                name: `Station Gun Lvl ${gameState.stationGunLevel + 1}: ${stationGunNames[gameState.stationGunLevel]}`,
-                cost: stationGunCost,
-                perform: () => {
-                    gameState.stationGunLevel++;
-                    updateStationGraphics();
-                    actionsNeedUpdate = true;
-                }
-            });
+        return rings;
+    }
+
+    // Transition to next level
+    function transitionToNextLevel() {
+        gameState.currentLevel++;
+
+        // Create teleportation effects for ship and station
+        const shipTeleportRings = createTeleportEffect(rocket.x, rocket.y, 40);
+        let stationTeleportRings = [];
+        if (gameState.stationLevel > 0) {
+            stationTeleportRings = createTeleportEffect(station.x, station.y, 80);
         }
 
-        return acts;
+        // Track all rings for cleanup
+        let allRings = [...shipTeleportRings, ...stationTeleportRings];
+        let newRings = [];
+
+        // Animate teleportation
+        let transitionFrames = 0;
+        const transitionDuration = 60; // 1 second at 60fps
+
+        const transitionTicker = (time) => {
+            transitionFrames += time.deltaTime;
+
+            // Fade out ship and station
+            if (transitionFrames < transitionDuration / 2) {
+                const fadeProgress = transitionFrames / (transitionDuration / 2);
+                rocket.alpha = 1 - fadeProgress;
+                if (station.visible) station.alpha = 1 - fadeProgress;
+
+                // Animate teleport rings
+                allRings.forEach(ring => {
+                    if (ring.parent) {
+                        ring.life -= time.deltaTime;
+                        ring.scale.set(ring.scale.x + 0.05 * time.deltaTime);
+                        ring.alpha = ring.life / ring.maxLife;
+                        if (ring.life <= 0) {
+                            gameContainer.removeChild(ring);
+                        }
+                    }
+                });
+            }
+
+            // Halfway through: update background and reposition
+            if (transitionFrames >= transitionDuration / 2 && transitionFrames < transitionDuration / 2 + 1) {
+                // Clean up any remaining old rings thoroughly
+                allRings.forEach(ring => {
+                    try {
+                        if (ring) {
+                            // Clear graphics before destroying
+                            if (ring.clear) ring.clear();
+                            // Remove from parent if still attached
+                            if (ring.parent) {
+                                ring.parent.removeChild(ring);
+                            }
+                            // Destroy the object completely
+                            if (ring.destroy) {
+                                ring.destroy({ children: true, texture: true, baseTexture: true });
+                            }
+                        }
+                    } catch (e) {
+                        // Ignore errors during cleanup
+                    }
+                });
+
+                // Update background
+                const config = LEVEL_CONFIG[gameState.currentLevel];
+                createStars();
+
+                // Reposition ship and station to center
+                rocket.x = app.screen.width / 2;
+                rocket.y = app.screen.height / 2 + 100;
+                rocket.vx = 0;
+                rocket.vy = 0;
+
+                if (gameState.stationLevel > 0) {
+                    station.x = app.screen.width / 2;
+                    station.y = app.screen.height / 2;
+                }
+
+                // Clear all enemies and their bullets
+                for (const enemy of enemies) {
+                    gameContainer.removeChild(enemy);
+                }
+                enemies.length = 0;
+
+                for (const eb of enemyBullets) {
+                    gameContainer.removeChild(eb);
+                }
+                enemyBullets.length = 0;
+
+                // Clear all resource pieces (prevent carrying over between levels)
+                for (const piece of resourcePieces) {
+                    gameContainer.removeChild(piece);
+                }
+                resourcePieces.length = 0;
+
+                // Clear all asteroids
+                for (const a of asteroids) {
+                    gameContainer.removeChild(a);
+                }
+                asteroids.length = 0;
+
+                // Respawn asteroids
+                for (let i = 0; i < numAsteroids; i++) {
+                    createAsteroid({ offscreen: true });
+                }
+
+                // Create new teleport effects at new positions
+                const newShipRings = createTeleportEffect(rocket.x, rocket.y, 40);
+                let newStationRings = [];
+                if (gameState.stationLevel > 0) {
+                    newStationRings = createTeleportEffect(station.x, station.y, 80);
+                }
+                newRings = [...newShipRings, ...newStationRings];
+
+                // Create transition message
+                createFloatingText(app.screen.width / 2, app.screen.height / 2 - 100,
+                    `Entering ${config.name}!`);
+            }
+
+            // Fade in ship and station
+            if (transitionFrames >= transitionDuration / 2) {
+                const fadeProgress = (transitionFrames - transitionDuration / 2) / (transitionDuration / 2);
+                rocket.alpha = fadeProgress;
+                if (station.visible) station.alpha = fadeProgress;
+
+                // Animate new rings during fade in
+                newRings.forEach(ring => {
+                    if (ring.parent) {
+                        ring.life -= time.deltaTime;
+                        ring.scale.set(ring.scale.x + 0.05 * time.deltaTime);
+                        ring.alpha = ring.life / ring.maxLife;
+                        if (ring.life <= 0) {
+                            gameContainer.removeChild(ring);
+                        }
+                    }
+                });
+            }
+
+            // End transition
+            if (transitionFrames >= transitionDuration) {
+                rocket.alpha = 1;
+                if (station.visible) station.alpha = 1;
+
+                // Clean up any remaining rings thoroughly
+                newRings.forEach(ring => {
+                    try {
+                        if (ring) {
+                            // Clear graphics before destroying
+                            if (ring.clear) ring.clear();
+                            // Remove from parent if still attached
+                            if (ring.parent) {
+                                ring.parent.removeChild(ring);
+                            }
+                            // Destroy the object completely
+                            if (ring.destroy) {
+                                ring.destroy({ children: true, texture: true, baseTexture: true });
+                            }
+                        }
+                    } catch (e) {
+                        // Ignore errors during cleanup
+                    }
+                });
+
+                app.ticker.remove(transitionTicker);
+                updateGoalProgress();
+            }
+        };
+
+        app.ticker.add(transitionTicker);
     }
 
     // Input handling
@@ -1106,14 +1618,14 @@ async function init() {
                     const inaccuracy = (Math.random() - 0.5) * enemy.accuracy;
                     const finalAngle = angleToTarget + inaccuracy;
 
-                    // Create enemy bullet
+                    // Create enemy bullet with level-specific damage
                     const eb = new PIXI.Graphics().circle(0, 0, 3).fill(0xff4444);
                     eb.x = enemy.x + Math.cos(enemy.rotation) * enemy.size;
                     eb.y = enemy.y + Math.sin(enemy.rotation) * enemy.size;
                     eb.vx = Math.cos(finalAngle) * 4;
                     eb.vy = Math.sin(finalAngle) * 4;
                     eb.life = 120;
-                    eb.damage = Math.floor(enemy.size / 5) + 5; // 5-12 damage
+                    eb.damage = (Math.floor(enemy.size / 5) + 5) * enemy.damageMult; // Apply damage multiplier
                     eb.r = 3;
 
                     gameContainer.addChild(eb);
@@ -1330,19 +1842,40 @@ async function init() {
             station.visible = false;
             station.removeChildren();
             createFloatingText(station.x, station.y, 'Station Destroyed!');
-            actionsNeedUpdate = true;
+            upgradeUIUpdate = true;
         }
 
         // Update UI
+        levelNameSpan.textContent = LEVEL_CONFIG[gameState.currentLevel].name;
         resourceCountSpan.textContent = resources;
-        shipHealthSpan.textContent = `${Math.ceil(gameState.ship.health)}/${gameState.ship.maxHealth}`;
-        stationHealthSpan.textContent = `${Math.ceil(gameState.stationHealth)}/${gameState.stationMaxHealth}`;
 
-        // Only update actions when resources change or flag is set
-        if (resources !== lastResources || actionsNeedUpdate) {
-            updateActions();
+        // Update ship health
+        const shipHealthPercent = (gameState.ship.health / gameState.ship.maxHealth) * 100;
+        shipHealthSpan.textContent = `${Math.ceil(gameState.ship.health)}/${gameState.ship.maxHealth}`;
+        shipHealthBar.style.width = `${Math.max(0, shipHealthPercent)}%`;
+
+        // Update station health
+        if (gameState.stationMaxHealth > 0) {
+            const stationHealthPercent = (gameState.stationHealth / gameState.stationMaxHealth) * 100;
+            stationHealthSpan.textContent = `${Math.ceil(gameState.stationHealth)}/${gameState.stationMaxHealth}`;
+            stationHealthBar.style.width = `${Math.max(0, stationHealthPercent)}%`;
+        } else {
+            stationHealthSpan.textContent = `0/0`;
+            stationHealthBar.style.width = `0%`;
+        }
+
+        // Only update upgrade UIs when resources change or flag is set
+        if (resources !== lastResources || upgradeUIUpdate) {
+            updateGoalProgress();
+            updateShipWeaponUI();
+            updateStationUpgradeUI();
             lastResources = resources;
-            actionsNeedUpdate = false;
+            upgradeUIUpdate = false;
+        }
+
+        // Check for level progression
+        if (checkLevelProgression()) {
+            transitionToNextLevel();
         }
     });
 
@@ -1360,24 +1893,222 @@ async function init() {
         return distance < r1 + r2;
     }
 
-    function updateActions() {
-        const currentActions = getActions();
-        actionList.innerHTML = '';
-        for (const action of currentActions) {
-            const li = document.createElement('li');
-            li.textContent = `${action.name} (${action.cost})`;
-            if (resources < action.cost) {
-                li.classList.add('disabled');
+    function updateShipWeaponUI() {
+        const gunLevel = gameState.ship.gunLevel;
+        const gunNames = [
+            'Basic Gun',           // Level 1
+            'Rapid Fire',          // Level 2
+            'Heavy Cannons',       // Level 3
+            'Triple Shot',         // Level 4
+            'Plasma Weapons',      // Level 5
+            'Laser Barrage',       // Level 6
+            'Ion Pulse',           // Level 7
+            'Quantum Cannons',     // Level 8
+            'Antimatter Guns',     // Level 9
+            'Singularity Weapon'   // Level 10
+        ];
+
+        // Update level and label
+        shipWeaponLevel.textContent = gunLevel;
+
+        if (gunLevel === 0) {
+            shipWeaponLabel.textContent = 'No Weapon';
+        } else if (gunLevel < 10) {
+            shipWeaponLabel.textContent = gunNames[gunLevel - 1];
+        } else {
+            shipWeaponLabel.textContent = gunNames[9];
+        }
+
+        // Calculate cost for next level
+        let nextCost = 0;
+        if (gunLevel < 10) {
+            nextCost = gunLevel === 0 ? 0 : Math.floor(150 * Math.pow(1.4, gunLevel - 1));
+        }
+
+        // Update progress bar and cost display
+        if (gunLevel >= 10) {
+            // Max level
+            shipWeaponProgress.style.width = '100%';
+            shipWeaponCost.textContent = 'MAX LEVEL';
+            shipUpgradeBtn.disabled = true;
+            shipUpgradeBtn.style.display = 'none';
+        } else {
+            // Show progress toward next level
+            const progress = nextCost === 0 ? 100 : Math.min((resources / nextCost) * 100, 100);
+            shipWeaponProgress.style.width = `${progress}%`;
+            shipWeaponCost.textContent = `${resources} / ${nextCost}`;
+
+            // Enable/disable upgrade button based on resources
+            if (resources >= nextCost) {
+                shipUpgradeBtn.disabled = false;
+                shipUpgradeBtn.style.display = 'block';
             } else {
-                li.onclick = () => {
-                    if (resources >= action.cost) {
-                        resources -= action.cost;
-                        action.perform();
-                        // Flag will trigger update on next frame
-                    }
-                };
+                shipUpgradeBtn.disabled = true;
+                shipUpgradeBtn.style.display = 'none';
             }
-            actionList.appendChild(li);
+        }
+    }
+
+    function updateStationUpgradeUI() {
+        const stationLevel = gameState.stationLevel;
+        const stationGunLevel = gameState.stationGunLevel;
+
+        // Station Level Names
+        const stationNames = [
+            'Core Module',        // Level 1
+            'Solar Array',        // Level 2
+            'Docking Bay',        // Level 3
+            'Defense Grid',       // Level 4
+            'Mining Hub',         // Level 5
+            'Research Lab',       // Level 6
+            'Command Center',     // Level 7
+            'Shield Generator',   // Level 8
+            'Production Facility',// Level 9
+            'Mega Station'        // Level 10
+        ];
+
+        // Station Gun Names
+        const stationGunNames = [
+            'Defense Turret',      // Level 1
+            'Twin Cannons',        // Level 2
+            'Missile Battery',     // Level 3
+            'Flak Array',          // Level 4
+            'Beam Weapons',        // Level 5
+            'Point Defense',       // Level 6
+            'Railguns',            // Level 7
+            'Particle Beams',      // Level 8
+            'Nova Cannons',        // Level 9
+            'Titan Weapon Array'   // Level 10
+        ];
+
+        // Update Station Level UI
+        stationLevelDisplay.textContent = stationLevel;
+
+        if (stationLevel === 0) {
+            stationLevelLabel.textContent = 'No Station';
+        } else if (stationLevel < 10) {
+            stationLevelLabel.textContent = stationNames[stationLevel - 1];
+        } else {
+            stationLevelLabel.textContent = stationNames[9];
+        }
+
+        // Calculate cost for next station level
+        let nextStationCost = 0;
+        if (stationLevel < 10) {
+            const baseCost = 100;
+            const nextLevel = stationLevel + 1;
+            nextStationCost = Math.floor(baseCost * Math.pow(1.5, nextLevel - 1));
+        }
+
+        // Update station level progress bar and cost display
+        if (stationLevel >= 10) {
+            stationLevelProgress.style.width = '100%';
+            stationLevelCost.textContent = 'MAX LEVEL';
+            stationLevelBtn.disabled = true;
+            stationLevelBtn.style.display = 'none';
+        } else {
+            const progress = Math.min((resources / nextStationCost) * 100, 100);
+            stationLevelProgress.style.width = `${progress}%`;
+            stationLevelCost.textContent = `${resources} / ${nextStationCost}`;
+
+            if (resources >= nextStationCost) {
+                stationLevelBtn.disabled = false;
+                stationLevelBtn.style.display = 'block';
+            } else {
+                stationLevelBtn.disabled = true;
+                stationLevelBtn.style.display = 'none';
+            }
+        }
+
+        // Update Station Gun UI
+        stationGunLevelDisplay.textContent = stationGunLevel;
+
+        if (stationGunLevel === 0) {
+            stationGunLabel.textContent = 'No Defense';
+        } else if (stationGunLevel < 10) {
+            stationGunLabel.textContent = stationGunNames[stationGunLevel - 1];
+        } else {
+            stationGunLabel.textContent = stationGunNames[9];
+        }
+
+        // Calculate cost for next station gun level
+        let nextStationGunCost = 0;
+        if (stationGunLevel < 10 && stationLevel >= 1) {
+            nextStationGunCost = Math.floor(200 * Math.pow(1.5, stationGunLevel));
+        }
+
+        // Update station gun progress bar and cost display
+        if (stationLevel === 0) {
+            // No station - show disabled state
+            stationGunProgress.style.width = '0%';
+            stationGunCost.textContent = 'BUILD STATION FIRST';
+            stationGunBtn.disabled = true;
+            stationGunBtn.style.display = 'none';
+        } else if (stationGunLevel >= 10) {
+            stationGunProgress.style.width = '100%';
+            stationGunCost.textContent = 'MAX LEVEL';
+            stationGunBtn.disabled = true;
+            stationGunBtn.style.display = 'none';
+        } else {
+            const progress = Math.min((resources / nextStationGunCost) * 100, 100);
+            stationGunProgress.style.width = `${progress}%`;
+            stationGunCost.textContent = `${resources} / ${nextStationGunCost}`;
+
+            if (resources >= nextStationGunCost) {
+                stationGunBtn.disabled = false;
+                stationGunBtn.style.display = 'block';
+            } else {
+                stationGunBtn.disabled = true;
+                stationGunBtn.style.display = 'none';
+            }
+        }
+    }
+
+    function updateGoalProgress() {
+        const requirements = LEVEL_CONFIG[gameState.currentLevel].requirements;
+
+        if (gameState.currentLevel === 0) {
+            // Level 0 - Tutorial level (only ship gun requirement)
+            const nextLevelName = LEVEL_CONFIG[gameState.currentLevel + 1].name;
+            goalProgressDiv.innerHTML = `
+                <div class="goal-description">Advance to ${nextLevelName}</div>
+                <div class="goal-item ${gameState.ship.gunLevel >= requirements.shipGunLevel ? 'completed' : ''}">
+                    ${gameState.ship.gunLevel >= requirements.shipGunLevel ? '✓' : '○'} Ship Guns: ${gameState.ship.gunLevel}/${requirements.shipGunLevel}
+                </div>
+            `;
+        } else if (gameState.currentLevel === 3) {
+            // Max level - show victory condition
+            goalProgressDiv.innerHTML = `
+                <div class="goal-item ${gameState.stationLevel >= requirements.stationLevel ? 'completed' : ''}">
+                    ✓ Station Level: ${gameState.stationLevel}/${requirements.stationLevel}
+                </div>
+                <div class="goal-item ${gameState.stationGunLevel >= requirements.stationGunLevel ? 'completed' : ''}">
+                    ✓ Station Guns: ${gameState.stationGunLevel}/${requirements.stationGunLevel}
+                </div>
+                <div class="goal-item ${gameState.ship.gunLevel >= requirements.shipGunLevel ? 'completed' : ''}">
+                    ✓ Ship Guns: ${gameState.ship.gunLevel}/${requirements.shipGunLevel}
+                </div>
+                ${gameState.stationLevel >= requirements.stationLevel &&
+                  gameState.stationGunLevel >= requirements.stationGunLevel &&
+                  gameState.ship.gunLevel >= requirements.shipGunLevel ?
+                  '<div class="goal-complete">🎉 VICTORY! All goals achieved!</div>' :
+                  '<div class="goal-incomplete">Complete all goals to win!</div>'}
+            `;
+        } else {
+            // Show requirements for next level
+            const nextLevelName = LEVEL_CONFIG[gameState.currentLevel + 1].name;
+            goalProgressDiv.innerHTML = `
+                <div class="goal-description">Advance to ${nextLevelName}</div>
+                <div class="goal-item ${gameState.stationLevel >= requirements.stationLevel ? 'completed' : ''}">
+                    ${gameState.stationLevel >= requirements.stationLevel ? '✓' : '○'} Station Level: ${gameState.stationLevel}/${requirements.stationLevel}
+                </div>
+                <div class="goal-item ${gameState.stationGunLevel >= requirements.stationGunLevel ? 'completed' : ''}">
+                    ${gameState.stationGunLevel >= requirements.stationGunLevel ? '✓' : '○'} Station Guns: ${gameState.stationGunLevel}/${requirements.stationGunLevel}
+                </div>
+                <div class="goal-item ${gameState.ship.gunLevel >= requirements.shipGunLevel ? 'completed' : ''}">
+                    ${gameState.ship.gunLevel >= requirements.shipGunLevel ? '✓' : '○'} Ship Guns: ${gameState.ship.gunLevel}/${requirements.shipGunLevel}
+                </div>
+            `;
         }
     }
 
@@ -1386,6 +2117,56 @@ async function init() {
         station.x = app.screen.width / 2;
         station.y = app.screen.height / 2;
     });
+
+    // Ship upgrade button handler
+    shipUpgradeBtn.addEventListener('click', () => {
+        const gunLevel = gameState.ship.gunLevel;
+        if (gunLevel < 10) {
+            const cost = gunLevel === 0 ? 0 : Math.floor(150 * Math.pow(1.4, gunLevel - 1));
+            if (resources >= cost) {
+                resources -= cost;
+                gameState.ship.gunLevel++;
+                updateShipStats();
+                upgradeUIUpdate = true;
+            }
+        }
+    });
+
+    // Station level upgrade button handler
+    stationLevelBtn.addEventListener('click', () => {
+        const stationLevel = gameState.stationLevel;
+        if (stationLevel < 10) {
+            const baseCost = 100;
+            const nextLevel = stationLevel + 1;
+            const cost = Math.floor(baseCost * Math.pow(1.5, nextLevel - 1));
+            if (resources >= cost) {
+                resources -= cost;
+                gameState.stationLevel++;
+                gameState.stationMaxHealth = gameState.stationLevel * 200;
+                gameState.stationHealth = gameState.stationMaxHealth;
+                updateStationGraphics();
+                upgradeUIUpdate = true;
+            }
+        }
+    });
+
+    // Station gun upgrade button handler
+    stationGunBtn.addEventListener('click', () => {
+        const stationGunLevel = gameState.stationGunLevel;
+        if (stationGunLevel < 10 && gameState.stationLevel >= 1) {
+            const cost = Math.floor(200 * Math.pow(1.5, stationGunLevel));
+            if (resources >= cost) {
+                resources -= cost;
+                gameState.stationGunLevel++;
+                updateStationGraphics();
+                upgradeUIUpdate = true;
+            }
+        }
+    });
+
+    // Initialize upgrade UIs
+    updateShipWeaponUI();
+    updateStationUpgradeUI();
 }
 
 init();
