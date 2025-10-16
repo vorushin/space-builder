@@ -8,6 +8,25 @@ Space Builder is a 2D space survival and base-building game built with vanilla J
 
 The game features a **4-level progression system** where players advance through different space environments (Training Zone → Asteroid Belt → Nebula Field → Alien Territory) by upgrading their ship and station to meet specific requirements.
 
+### Controls
+
+**Mouse Controls**:
+- **Click to Lock**: Click on the game canvas to enable pointer lock mode
+- **Mouse Movement**: Ship automatically follows cursor position with AI-based navigation
+- **Left Mouse Button (Hold)**: Fire weapons continuously
+- **ESC Key**: Unlock mouse cursor to interact with UI elements
+
+**Keyboard Shortcuts**:
+- **1**: Upgrade Ship Weapons
+- **2**: Upgrade Station Level
+- **3**: Upgrade Station Defense Guns
+
+The ship uses intelligent movement AI that:
+- Rotates smoothly towards the cursor position
+- Applies thrust when facing the target direction (within 45°)
+- Automatically slows down when approaching the cursor (within 100px)
+- Stops engines and brakes gently when very close (within 30px)
+
 ## Development Commands
 
 ### Running the Game
@@ -75,15 +94,23 @@ LEVEL_CONFIG = {
 - `floatingTexts[]` - Visual feedback for resource collection
 - `explosions[]` - Particle effects for collisions and destruction
 
-**Containers** (lines 65-68):
+**Containers** (lines 133-149):
 - `backgroundContainer` - Holds star field (regenerated per level)
 - `gameContainer` - Holds all game entities (ship, station, asteroids, bullets, etc.)
-- Layering: `backgroundContainer` renders behind `gameContainer`
+- `cursorContainer` - Holds custom cursor crosshair visual (rendered on top)
+- Layering: `backgroundContainer` → `gameContainer` → `cursorContainer`
 
-### Game Loop Flow (main ticker, lines 872-871)
+**Custom Cursor** (lines 140-149):
+- Cyan crosshair with circle and perpendicular lines
+- Only visible when pointer is locked
+- Position updated every frame to follow mouse movement
+- Rendered in separate container to ensure it's always on top
 
-1. **Input Processing**: Keyboard state, weapon firing (spacebar)
-2. **Ship Physics**: Thrust (WASD/arrows), rotation, velocity damping (0.99), screen boundary clamping
+### Game Loop Flow (main ticker, lines 1233-1966)
+
+1. **Ship AI Navigation**: Mouse-following behavior with rotation, thrust control, and automatic deceleration (lines 1234-1282)
+2. **Mouse-Based Shooting**: Continuous fire when left mouse button is held (lines 1279-1282)
+3. **Ship Physics**: Velocity damping (0.99), screen boundary clamping
 3. **Station Systems**: Rotation, auto-targeting guns, passive abilities (health regen, resource production)
 4. **Bullet Updates**: Movement, lifetime, collision with asteroids/enemies, splash damage
 5. **Station Bullet Updates**: Movement, collision with asteroids/enemies
@@ -97,11 +124,15 @@ LEVEL_CONFIG = {
 13. **Health Checks**: Ship/station destruction and respawn
 14. **UI Updates**: Health bars, resource count, action list, goal progress (dirty flag optimization)
 15. **Level Progression**: Check requirements and trigger level transitions
+16. **Cursor Update**: Update custom cursor position and visibility (lines 1962-1965)
 
 ### Key Code Locations
 
-- **Ship Weapon System**: `main.js:310-367` - `shoot()` function with multi-shot, fire rate, splash damage
-- **Station Auto-Targeting**: `main.js:254-330` - Finds nearest enemy/asteroid, fires station guns with spread
+- **Input Handling**: `main.js:1142-1228` - Pointer lock, mouse tracking, keyboard shortcuts
+- **Ship AI Navigation**: `main.js:1234-1282` - Mouse-following movement logic with deceleration
+- **Custom Cursor**: `main.js:140-149, 1962-1965` - Visual crosshair that follows mouse
+- **Ship Weapon System**: `main.js:638-718` - `shoot()` function with multi-shot, fire rate, splash damage
+- **Station Auto-Targeting**: `main.js:571-637` - Finds nearest enemy/asteroid, fires station guns with spread
 - **Upgrade Actions**: `main.js:578-665` - `getActions()` generates available upgrades with costs
 - **Ship Graphics**: `main.js:231-303` - `updateShipStats()` draws ship based on gun upgrade levels
 - **Station Graphics**: `main.js:97-214` - `updateStationGraphics()` progressive visual upgrades per level
@@ -145,8 +176,16 @@ ring.destroy({ children: true, texture: true, baseTexture: true });  // Complete
 
 ### Physics System
 
-**Movement**:
-- Momentum-based with velocity damping (0.99 per frame for ship)
+**Ship AI Movement** (lines 1234-1282):
+- **Target Tracking**: Calculates angle and distance to cursor position
+- **Smooth Rotation**: Rotates towards target with normalized angle difference
+- **Intelligent Thrust**: Only applies thrust when facing target (within 45°)
+- **Progressive Deceleration**: Reduces thrust when within 100px of cursor
+- **Automatic Braking**: Applies 95% velocity damping when within 30px of cursor
+- **Engine Visual**: Shows engine flame only when thrust is active
+
+**General Movement**:
+- Momentum-based with velocity damping (0.99 per frame for ship, 0.95 when braking)
 - Screen boundary clamping for ship (stops at edges)
 - Screen wrapping for asteroids (teleport to opposite edge when off-screen)
 - Delta time correction for frame rate independence (`time.deltaTime`)
@@ -338,13 +377,46 @@ When adding new graphics that animate or transition:
 - **Asteroid Count**: 20 (constant, line 440)
 - **Ship Pull Radius**: 80px (constant, line 382)
 - **Station Pull Radius**: 100-340px (dynamic, formula at lines 112, 757)
-- **Velocity Damping**: 0.99 for ship (lines 217, 221)
+- **Velocity Damping**: 0.99 for ship (normal), 0.95 when braking near cursor
+- **Ship AI Distances**: 100px slowdown radius, 30px stop radius
 - **Frame Target**: 60 FPS with delta time correction
 - **Transition Duration**: 60 frames (1 second at 60fps, line 733)
 - **Teleport Rings**: 5 rings per effect (line 691)
 - **Spawn Margins**: 100px for asteroids (line 463), 50px for enemies (line 543)
 
+### Input System
+
+**Pointer Lock** (lines 1148-1164):
+- Click canvas to request pointer lock
+- ESC key to exit pointer lock
+- Canvas cursor hidden when locked, default cursor shown when unlocked
+- Pointer lock state tracked via `pointerlockchange` event
+
+**Mouse Tracking** (lines 1167-1182):
+- **Locked Mode**: Uses `movementX/Y` deltas, cursor clamped to screen bounds
+- **Unlocked Mode**: Uses absolute `clientX/Y` position relative to canvas
+- Cursor position stored in `cursorX` and `cursorY` variables
+- Updated continuously via `mousemove` event
+
+**Mouse Button Handling** (lines 1184-1195):
+- Left mouse button tracked in `mousePressed` boolean
+- Enables continuous shooting in game loop (lines 1279-1282)
+
+**Keyboard Shortcuts** (lines 1197-1228):
+- **ESC**: Exit pointer lock
+- **1 / Numpad1**: Trigger ship weapon upgrade (simulates button click)
+- **2 / Numpad2**: Trigger station level upgrade (simulates button click)
+- **3 / Numpad3**: Trigger station gun upgrade (simulates button click)
+
 ## Testing the Game
+
+**Testing Controls**:
+1. Start game and click canvas to lock cursor
+2. Move mouse around - ship should follow cursor smoothly
+3. Hold left mouse button - ship should fire continuously
+4. Move cursor close to ship - ship should slow down and stop near cursor
+5. Press ESC to unlock cursor
+6. Press 1, 2, 3 keys to test upgrade shortcuts (when resources available)
 
 **Testing Level Progression**:
 1. Start game in Training Zone (Level 0)
@@ -354,9 +426,10 @@ When adding new graphics that animate or transition:
 5. Continue through levels 1-3 testing transitions
 
 **Testing Ship Weapons**:
-1. Start game, collect initial resources by shooting asteroids
-2. Purchase gun upgrades sequentially (watch for visual changes)
+1. Start game, lock cursor, collect initial resources by shooting asteroids
+2. Purchase gun upgrades sequentially using [1] key or clicking [1] button (watch for visual changes)
 3. Verify: fire rate ↑, bullet count (1/3/5/7), bullet color progression, splash damage (level 7+)
+4. Test continuous shooting by holding left mouse button
 
 **Testing Station Systems**:
 1. Build station to level 1 (after Level 0)

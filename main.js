@@ -132,8 +132,21 @@ async function init() {
     // Containers
     const backgroundContainer = new PIXI.Container();
     const gameContainer = new PIXI.Container();
+    const cursorContainer = new PIXI.Container();
     app.stage.addChild(backgroundContainer);
     app.stage.addChild(gameContainer);
+    app.stage.addChild(cursorContainer);
+
+    // Custom cursor visual
+    const cursor = new PIXI.Graphics();
+    cursor.circle(0, 0, 8);
+    cursor.stroke({ color: 0x00ffff, width: 2 });
+    cursor.moveTo(-12, 0);
+    cursor.lineTo(12, 0);
+    cursor.moveTo(0, -12);
+    cursor.lineTo(0, 12);
+    cursor.stroke({ color: 0x00ffff, width: 1 });
+    cursorContainer.addChild(cursor);
 
     // Starry Background
     function createStars() {
@@ -1141,45 +1154,131 @@ async function init() {
 
     // Input handling
     const keys = {};
+    let mousePressed = false;
+    let cursorX = app.screen.width / 2;
+    let cursorY = app.screen.height / 2;
+
+    // Request pointer lock on click
+    app.canvas.addEventListener('click', () => {
+        if (!document.pointerLockElement) {
+            app.canvas.requestPointerLock();
+        }
+    });
+
+    // Track pointer lock state
+    document.addEventListener('pointerlockchange', () => {
+        if (document.pointerLockElement === app.canvas) {
+            // Pointer is locked
+            app.canvas.style.cursor = 'none';
+        } else {
+            // Pointer is unlocked
+            app.canvas.style.cursor = 'default';
+        }
+    });
+
+    // Handle mouse movement (both locked and unlocked)
+    document.addEventListener('mousemove', (e) => {
+        if (document.pointerLockElement === app.canvas) {
+            // Locked mode: use movement deltas
+            cursorX += e.movementX;
+            cursorY += e.movementY;
+
+            // Clamp cursor to screen bounds
+            cursorX = Math.max(0, Math.min(app.screen.width, cursorX));
+            cursorY = Math.max(0, Math.min(app.screen.height, cursorY));
+        } else {
+            // Unlocked mode: use absolute position
+            const rect = app.canvas.getBoundingClientRect();
+            cursorX = e.clientX - rect.left;
+            cursorY = e.clientY - rect.top;
+        }
+    });
+
+    // Handle mouse button for shooting
+    document.addEventListener('mousedown', (e) => {
+        if (e.button === 0) { // Left mouse button
+            mousePressed = true;
+        }
+    });
+
+    document.addEventListener('mouseup', (e) => {
+        if (e.button === 0) { // Left mouse button
+            mousePressed = false;
+        }
+    });
+
     document.addEventListener('keydown', (e) => {
         keys[e.key] = true;
-        if (e.code === 'Space') shoot();
+
+        // ESC to unlock pointer
+        if (e.code === 'Escape' && document.pointerLockElement) {
+            document.exitPointerLock();
+        }
+
+        // Keyboard shortcuts for upgrades
+        if (e.code === 'Digit1' || e.code === 'Numpad1') {
+            shipUpgradeBtn.click();
+        }
+        if (e.code === 'Digit2' || e.code === 'Numpad2') {
+            stationLevelBtn.click();
+        }
+        if (e.code === 'Digit3' || e.code === 'Numpad3') {
+            stationGunBtn.click();
+        }
     });
     document.addEventListener('keyup', (e) => keys[e.key] = false);
 
     // Game loop
     let lastResources = resources; // Track resource changes
     app.ticker.add((time) => {
-        // Rocket controls
-        // A/D or Left/Right Arrow - Rotation
-        if (keys['a'] || keys['ArrowLeft']) rocket.rotation -= rocket.rotationSpeed * time.deltaTime;
-        if (keys['d'] || keys['ArrowRight']) rocket.rotation += rocket.rotationSpeed * time.deltaTime;
+        // Rocket AI - Follow cursor
+        const dx = cursorX - rocket.x;
+        const dy = cursorY - rocket.y;
+        const distanceToCursor = Math.sqrt(dx * dx + dy * dy);
+        const angleToTarget = Math.atan2(dy, dx);
 
-        // W or Up Arrow - Forward thrust
-        if (keys['w'] || keys['ArrowUp']) {
-            rocket.vx += Math.cos(rocket.rotation) * rocket.thrust * time.deltaTime;
-            rocket.vy += Math.sin(rocket.rotation) * rocket.thrust * time.deltaTime;
+        // Rotate ship towards cursor
+        let angleDiff = angleToTarget - rocket.rotation;
+        // Normalize angle difference to [-PI, PI]
+        while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+        while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+
+        // Smooth rotation
+        const rotationAmount = Math.min(Math.abs(angleDiff), rocket.rotationSpeed * time.deltaTime);
+        if (angleDiff > 0) {
+            rocket.rotation += rotationAmount;
+        } else {
+            rocket.rotation -= rotationAmount;
+        }
+
+        // Apply thrust if we're facing roughly the right direction and not too close
+        const slowdownDistance = 100; // Start slowing down when this close
+        const stopDistance = 30; // Stop moving when this close
+        const facingTarget = Math.abs(angleDiff) < Math.PI / 4; // Within 45 degrees
+
+        if (distanceToCursor > stopDistance && facingTarget) {
+            // Calculate thrust strength based on distance
+            let thrustMultiplier = 1.0;
+            if (distanceToCursor < slowdownDistance) {
+                // Gradually reduce thrust as we approach target
+                thrustMultiplier = distanceToCursor / slowdownDistance;
+            }
+
+            rocket.vx += Math.cos(rocket.rotation) * rocket.thrust * thrustMultiplier * time.deltaTime;
+            rocket.vy += Math.sin(rocket.rotation) * rocket.thrust * thrustMultiplier * time.deltaTime;
             rocketEngine.visible = true;
+        } else if (distanceToCursor <= stopDistance) {
+            // Apply braking when very close to cursor
+            rocket.vx *= 0.95;
+            rocket.vy *= 0.95;
+            rocketEngine.visible = false;
         } else {
             rocketEngine.visible = false;
         }
 
-        // S or Down Arrow - Backward thrust
-        if (keys['s'] || keys['ArrowDown']) {
-            rocket.vx -= Math.cos(rocket.rotation) * rocket.thrust * 0.5 * time.deltaTime;
-            rocket.vy -= Math.sin(rocket.rotation) * rocket.thrust * 0.5 * time.deltaTime;
-        }
-
-        // Q - Strafe left (perpendicular to ship direction)
-        if (keys['q']) {
-            rocket.vx += Math.cos(rocket.rotation - Math.PI / 2) * rocket.thrust * time.deltaTime;
-            rocket.vy += Math.sin(rocket.rotation - Math.PI / 2) * rocket.thrust * time.deltaTime;
-        }
-
-        // E - Strafe right (perpendicular to ship direction)
-        if (keys['e']) {
-            rocket.vx += Math.cos(rocket.rotation + Math.PI / 2) * rocket.thrust * time.deltaTime;
-            rocket.vy += Math.sin(rocket.rotation + Math.PI / 2) * rocket.thrust * time.deltaTime;
+        // Continuous shooting while mouse is pressed
+        if (mousePressed) {
+            shoot();
         }
 
         // Rocket physics
@@ -1877,6 +1976,11 @@ async function init() {
         if (checkLevelProgression()) {
             transitionToNextLevel();
         }
+
+        // Update cursor position
+        cursor.x = cursorX;
+        cursor.y = cursorY;
+        cursor.visible = document.pointerLockElement === app.canvas;
     });
 
     function wrapObject(obj, padding = 0) {
