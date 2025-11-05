@@ -34,6 +34,12 @@ async function init() {
     let upgradeUIUpdate = true; // Flag to track when upgrade UI needs refresh
     let lastProductionTime = Date.now();
     let lastStationShotTime = 0;
+    let bossSpawned = false;
+    let bossDefeated = false;
+    let bossAnnouncementShown = false;
+    let resourceCollectionPhase = false;
+    let resourceCollectionTimer = 0;
+    const COLLECTION_PHASE_DURATION = 600; // 10 seconds at 60fps
     const gameState = {
         currentLevel: 0, // 0 = Training Zone, 1 = Asteroid Belt, 2 = Nebula Field, 3 = Alien Territory
         stationLevel: 0,
@@ -55,76 +61,236 @@ async function init() {
             name: 'Training Zone',
             bgColor: 0x001010,
             starColors: [0xaadddd, 0x88cccc, 0x66aaaa],
-            requirements: { stationLevel: 0, stationGunLevel: 0, shipGunLevel: 2 },
+            requirements: { stationLevel: 0, stationGunLevel: 0, shipGunLevel: 2, bossDefeated: false },
             asteroid: {
                 fillColor: 0x88cccc,
                 strokeColor: 0xaadddd,
                 speedMultiplier: 1.0,
                 healthMultiplier: 1.0
             },
-            enemy: {
-                fillColor: 0xff6666,
-                strokeColor: 0xcc4444,
-                speedMultiplier: 1.0,
-                healthMultiplier: 1.0,
-                damageMultiplier: 1.0
+            enemyTypes: [
+                {
+                    name: 'Training Drone',
+                    weight: 0.7,
+                    fillColor: 0xff6666,
+                    strokeColor: 0xcc4444,
+                    size: { min: 10, max: 15 },
+                    healthMultiplier: 0.8,
+                    speedMultiplier: 0.9,
+                    fireRate: 2000,
+                    accuracy: 0.4,
+                    damage: 5
+                },
+                {
+                    name: 'Advanced Drone',
+                    weight: 0.3,
+                    fillColor: 0xff8888,
+                    strokeColor: 0xcc6666,
+                    size: { min: 12, max: 18 },
+                    healthMultiplier: 1.0,
+                    speedMultiplier: 1.1,
+                    fireRate: 1800,
+                    accuracy: 0.35,
+                    damage: 6
+                }
+            ],
+            boss: {
+                name: 'Protocol Override',
+                fillColor: 0xff0000,
+                strokeColor: 0xcc0000,
+                size: 40,
+                health: 300,
+                speed: 0.8,
+                fireRate: 800,
+                accuracy: 0.2,
+                damage: 8,
+                burstCount: 2
             }
         },
         1: {
             name: 'Asteroid Belt',
             bgColor: 0x000000,
             starColors: [0xffffff, 0xcccccc, 0xaaaaaa],
-            requirements: { stationLevel: 3, stationGunLevel: 3, shipGunLevel: 3 },
+            requirements: { stationLevel: 3, stationGunLevel: 3, shipGunLevel: 3, bossDefeated: false },
             asteroid: {
                 fillColor: 0x888888,
                 strokeColor: 0xaaaaaa,
                 speedMultiplier: 1.2,
                 healthMultiplier: 1.3
             },
-            enemy: {
-                fillColor: 0xff3333,
-                strokeColor: 0xaa0000,
-                speedMultiplier: 1.2,
-                healthMultiplier: 1.4,
-                damageMultiplier: 1.3
+            enemyTypes: [
+                {
+                    name: 'Pirate Scout',
+                    weight: 0.5,
+                    fillColor: 0xff3333,
+                    strokeColor: 0xaa0000,
+                    size: { min: 12, max: 18 },
+                    healthMultiplier: 1.0,
+                    speedMultiplier: 1.4,
+                    fireRate: 1600,
+                    accuracy: 0.3,
+                    damage: 7
+                },
+                {
+                    name: 'Mining Raider',
+                    weight: 0.3,
+                    fillColor: 0xffaa33,
+                    strokeColor: 0xaa6600,
+                    size: { min: 18, max: 25 },
+                    healthMultiplier: 1.3,
+                    speedMultiplier: 1.0,
+                    fireRate: 2000,
+                    accuracy: 0.25,
+                    damage: 9
+                },
+                {
+                    name: 'Scavenger Cruiser',
+                    weight: 0.2,
+                    fillColor: 0x666666,
+                    strokeColor: 0x444444,
+                    size: { min: 25, max: 32 },
+                    healthMultiplier: 1.6,
+                    speedMultiplier: 0.7,
+                    fireRate: 2400,
+                    accuracy: 0.28,
+                    damage: 11
+                }
+            ],
+            boss: {
+                name: 'Crimson Marauder',
+                fillColor: 0xaa0000,
+                strokeColor: 0x880000,
+                size: 50,
+                health: 800,
+                speed: 1.0,
+                fireRate: 600,
+                accuracy: 0.15,
+                damage: 12,
+                burstCount: 3
             }
         },
         2: {
             name: 'Nebula Field',
             bgColor: 0x0a0520,
             starColors: [0xaa88ff, 0x88aaff, 0xccaaff, 0xff88ff],
-            requirements: { stationLevel: 6, stationGunLevel: 6, shipGunLevel: 6 },
+            requirements: { stationLevel: 6, stationGunLevel: 6, shipGunLevel: 6, bossDefeated: false },
             asteroid: {
                 fillColor: 0x8866dd,
                 strokeColor: 0xaa88ff,
                 speedMultiplier: 1.4,
                 healthMultiplier: 1.6
             },
-            enemy: {
-                fillColor: 0xff00ff,
-                strokeColor: 0xaa00aa,
-                speedMultiplier: 1.4,
-                healthMultiplier: 1.8,
-                damageMultiplier: 1.6
+            enemyTypes: [
+                {
+                    name: 'Nebula Wraith',
+                    weight: 0.4,
+                    fillColor: 0xff00ff,
+                    strokeColor: 0xaa00aa,
+                    size: { min: 15, max: 20 },
+                    healthMultiplier: 1.2,
+                    speedMultiplier: 1.6,
+                    fireRate: 1400,
+                    accuracy: 0.25,
+                    damage: 10
+                },
+                {
+                    name: 'Energy Stalker',
+                    weight: 0.35,
+                    fillColor: 0xaa88ff,
+                    strokeColor: 0x8866dd,
+                    size: { min: 20, max: 28 },
+                    healthMultiplier: 1.5,
+                    speedMultiplier: 1.2,
+                    fireRate: 1800,
+                    accuracy: 0.22,
+                    damage: 13
+                },
+                {
+                    name: 'Void Hunter',
+                    weight: 0.25,
+                    fillColor: 0x4400aa,
+                    strokeColor: 0x220088,
+                    size: { min: 28, max: 36 },
+                    healthMultiplier: 2.0,
+                    speedMultiplier: 0.9,
+                    fireRate: 2200,
+                    accuracy: 0.2,
+                    damage: 15
+                }
+            ],
+            boss: {
+                name: 'Nebula Sovereign',
+                fillColor: 0x6600ff,
+                strokeColor: 0x4400aa,
+                size: 60,
+                health: 1500,
+                speed: 1.2,
+                fireRate: 500,
+                accuracy: 0.12,
+                damage: 15,
+                burstCount: 4
             }
         },
         3: {
             name: 'Alien Territory',
             bgColor: 0x200a00,
             starColors: [0xffaa44, 0xff8844, 0xffcc44, 0xff6644],
-            requirements: { stationLevel: 10, stationGunLevel: 10, shipGunLevel: 10 },
+            requirements: { stationLevel: 10, stationGunLevel: 10, shipGunLevel: 10, bossDefeated: false },
             asteroid: {
                 fillColor: 0xcc6633,
                 strokeColor: 0xff8844,
                 speedMultiplier: 1.6,
                 healthMultiplier: 2.0
             },
-            enemy: {
-                fillColor: 0xff4400,
-                strokeColor: 0xaa2200,
-                speedMultiplier: 1.6,
-                healthMultiplier: 2.2,
-                damageMultiplier: 2.0
+            enemyTypes: [
+                {
+                    name: 'Alien Scout',
+                    weight: 0.35,
+                    fillColor: 0xff4400,
+                    strokeColor: 0xaa2200,
+                    size: { min: 18, max: 24 },
+                    healthMultiplier: 1.5,
+                    speedMultiplier: 1.8,
+                    fireRate: 1200,
+                    accuracy: 0.2,
+                    damage: 12
+                },
+                {
+                    name: 'Alien Warrior',
+                    weight: 0.35,
+                    fillColor: 0xff6600,
+                    strokeColor: 0xaa4400,
+                    size: { min: 24, max: 32 },
+                    healthMultiplier: 2.0,
+                    speedMultiplier: 1.3,
+                    fireRate: 1600,
+                    accuracy: 0.18,
+                    damage: 16
+                },
+                {
+                    name: 'Alien Dreadnought',
+                    weight: 0.3,
+                    fillColor: 0xaa2200,
+                    strokeColor: 0x881100,
+                    size: { min: 32, max: 42 },
+                    healthMultiplier: 2.8,
+                    speedMultiplier: 0.8,
+                    fireRate: 2000,
+                    accuracy: 0.15,
+                    damage: 20
+                }
+            ],
+            boss: {
+                name: 'Xenarch Prime',
+                fillColor: 0x660000,
+                strokeColor: 0x440000,
+                size: 75,
+                health: 3000,
+                speed: 1.4,
+                fireRate: 400,
+                accuracy: 0.1,
+                damage: 20,
+                burstCount: 5
             }
         }
     };
@@ -721,6 +887,9 @@ async function init() {
         piece.value = value;
         piece.r = 3;
         piece.pullRadius = 80; // Distance at which ship starts pulling this in
+        piece.lifetime = 0; // Track how long resource has existed (in frames at 60fps)
+        piece.maxLifetime = 3600; // 60 seconds at 60fps
+        piece.fadeStartTime = 1800; // Start fading after 30 seconds
 
         gameContainer.addChild(piece);
         resourcePieces.push(piece);
@@ -729,13 +898,14 @@ async function init() {
     // Floating text for resource collection
     const floatingTexts = [];
 
-    function createFloatingText(x, y, text) {
+    function createFloatingText(x, y, text, color = 0x00ff00, fontSize = 16) {
         const textObj = new PIXI.Text({
             text: text,
             style: {
-                fontSize: 16,
-                fill: 0x00ff00,
-                fontWeight: 'bold'
+                fontSize: fontSize,
+                fill: color,
+                fontWeight: 'bold',
+                stroke: { color: 0x000000, width: 3 }
             }
         });
         textObj.x = x;
@@ -847,88 +1017,425 @@ async function init() {
     // Enemy Ships
     const enemies = [];
     const enemyBullets = [];
+    const enemyGroups = [];
     let lastEnemySpawnTime = Date.now();
+    let nextGroupId = 0;
 
-    function createEnemyShip() {
+    function createEnemyShip(isBoss = false, groupData = null) {
         const enemy = new PIXI.Container();
-
-        // Get level-specific enemy properties
         const levelConfig = LEVEL_CONFIG[gameState.currentLevel];
-        const healthMult = levelConfig.enemy.healthMultiplier;
-        const speedMult = levelConfig.enemy.speedMultiplier;
 
-        // Random size: small (10-15), medium (15-25), large (25-35)
-        const sizeType = Math.random();
-        let size, health, speed, fireRate, accuracy;
+        let enemyType, size, health, speed, fireRate, accuracy, fillColor, strokeColor, damage;
 
-        if (sizeType < 0.5) {
-            // Small - fast, low HP
-            size = 10 + Math.random() * 5;
-            health = (20 + size * 2) * healthMult;
-            speed = (1.5 + Math.random() * 0.5) * speedMult;
-            fireRate = 1500; // ms
-            accuracy = 0.3; // Lower = less accurate
-        } else if (sizeType < 0.85) {
-            // Medium - balanced
-            size = 15 + Math.random() * 10;
-            health = (40 + size * 3) * healthMult;
-            speed = (1 + Math.random() * 0.5) * speedMult;
-            fireRate = 2000;
-            accuracy = 0.25;
+        if (isBoss) {
+            // Create boss enemy
+            const boss = levelConfig.boss;
+            enemyType = boss.name;
+            size = boss.size;
+
+            // Adaptive HP based on player's current weapon damage
+            // Calculate damage per hit: gunLevel * 5 (player bullets do damage * 5)
+            const baseDamagePerHit = gameState.ship.gunLevel * 5;
+
+            // Account for multi-shot (not all bullets hit, so use 70% effectiveness)
+            let numBullets = 1;
+            if (gameState.ship.gunLevel >= 4) numBullets = 3;
+            if (gameState.ship.gunLevel >= 6) numBullets = 5;
+            if (gameState.ship.gunLevel >= 8) numBullets = 7;
+            const effectiveBulletsHit = numBullets * 0.7; // 70% hit rate
+            const damagePerVolley = baseDamagePerHit * effectiveBulletsHit;
+
+            // Boss should take 30-50 volleys to defeat (randomized for variety)
+            const volleysToDefeat = 30 + Math.random() * 20; // 30-50
+            health = Math.floor(damagePerVolley * volleysToDefeat);
+
+            // Minimum HP to ensure boss isn't too easy
+            health = Math.max(health, 500);
+
+            speed = boss.speed;
+            fireRate = boss.fireRate;
+            accuracy = boss.accuracy;
+            fillColor = boss.fillColor;
+            strokeColor = boss.strokeColor;
+            damage = boss.damage;
+            enemy.isBoss = true;
+            enemy.burstCount = boss.burstCount;
+            enemy.burstShotsFired = 0;
+            enemy.burstCooldown = 0;
         } else {
-            // Large - slow, high HP
-            size = 25 + Math.random() * 10;
-            health = (80 + size * 4) * healthMult;
-            speed = (0.5 + Math.random() * 0.3) * speedMult;
-            fireRate = 2500;
-            accuracy = 0.2;
+            // Weighted random selection of enemy type
+            const enemyTypes = levelConfig.enemyTypes;
+            const totalWeight = enemyTypes.reduce((sum, type) => sum + type.weight, 0);
+            let random = Math.random() * totalWeight;
+
+            let selectedType = enemyTypes[0];
+            for (const type of enemyTypes) {
+                random -= type.weight;
+                if (random <= 0) {
+                    selectedType = type;
+                    break;
+                }
+            }
+
+            enemyType = selectedType.name;
+            size = selectedType.size.min + Math.random() * (selectedType.size.max - selectedType.size.min);
+            const baseHealth = 30 + size * 3;
+            health = baseHealth * selectedType.healthMultiplier;
+            speed = (0.8 + Math.random() * 0.4) * selectedType.speedMultiplier;
+            fireRate = selectedType.fireRate;
+            accuracy = selectedType.accuracy;
+            fillColor = selectedType.fillColor;
+            strokeColor = selectedType.strokeColor;
+            damage = selectedType.damage;
+            enemy.isBoss = false;
         }
 
+        enemy.enemyType = enemyType;
         enemy.maxHealth = health;
         enemy.health = health;
         enemy.size = size;
         enemy.speed = speed;
         enemy.fireRate = fireRate;
         enemy.accuracy = accuracy;
+        enemy.damage = damage;
         enemy.lastShotTime = Date.now();
         enemy.r = size; // Collision radius
-        enemy.damageMult = levelConfig.enemy.damageMultiplier; // Store damage multiplier
 
-        // Spawn outside screen
-        const side = Math.floor(Math.random() * 4);
-        if (side === 0) { // Top
-            enemy.x = Math.random() * app.screen.width;
-            enemy.y = -50;
-        } else if (side === 1) { // Right
-            enemy.x = app.screen.width + 50;
-            enemy.y = Math.random() * app.screen.height;
-        } else if (side === 2) { // Bottom
-            enemy.x = Math.random() * app.screen.width;
-            enemy.y = app.screen.height + 50;
-        } else { // Left
-            enemy.x = -50;
-            enemy.y = Math.random() * app.screen.height;
+        // Assign group data
+        if (groupData) {
+            enemy.groupId = groupData.groupId;
+            enemy.groupRole = groupData.role; // 'leader' or 'follower'
+            enemy.formationOffset = groupData.formationOffset || { x: 0, y: 0 };
         }
 
-        // Draw enemy ship with level-specific colors
-        const fillColor = levelConfig.enemy.fillColor;
-        const strokeColor = levelConfig.enemy.strokeColor;
-        const g = new PIXI.Graphics();
-        g.moveTo(size, 0)
-            .lineTo(-size * 0.7, -size * 0.7)
-            .lineTo(-size * 0.4, 0)
-            .lineTo(-size * 0.7, size * 0.7)
-            .closePath()
-            .fill(fillColor)
-            .stroke({ width: 2, color: strokeColor });
+        // Spawn position
+        if (groupData && groupData.spawnPos) {
+            // Use group spawn position with formation offset
+            enemy.x = groupData.spawnPos.x + groupData.formationOffset.x;
+            enemy.y = groupData.spawnPos.y + groupData.formationOffset.y;
+        } else {
+            // Spawn outside screen (for bosses and solo enemies)
+            const side = Math.floor(Math.random() * 4);
+            if (side === 0) { // Top
+                enemy.x = Math.random() * app.screen.width;
+                enemy.y = -50;
+            } else if (side === 1) { // Right
+                enemy.x = app.screen.width + 50;
+                enemy.y = Math.random() * app.screen.height;
+            } else if (side === 2) { // Bottom
+                enemy.x = Math.random() * app.screen.width;
+                enemy.y = app.screen.height + 50;
+            } else { // Left
+                enemy.x = -50;
+                enemy.y = Math.random() * app.screen.height;
+            }
+        }
 
-        // Weapons
-        g.rect(size * 0.5, -size * 0.3, size * 0.4, size * 0.15).fill(strokeColor);
-        g.rect(size * 0.5, size * 0.15, size * 0.4, size * 0.15).fill(strokeColor);
+        // Draw enemy ship
+        const g = new PIXI.Graphics();
+
+        if (isBoss) {
+            // Boss visual - larger and more intimidating
+            // Main body
+            g.moveTo(size, 0)
+                .lineTo(-size * 0.8, -size * 0.8)
+                .lineTo(-size * 0.5, 0)
+                .lineTo(-size * 0.8, size * 0.8)
+                .closePath()
+                .fill(fillColor)
+                .stroke({ width: 4, color: strokeColor });
+
+            // Boss core
+            g.circle(0, 0, size * 0.3).fill(strokeColor);
+            g.circle(0, 0, size * 0.15).fill(0xffffff);
+
+            // Multiple weapon arrays
+            for (let i = 0; i < 4; i++) {
+                const angle = (i / 4) * Math.PI * 2 - Math.PI / 2;
+                const wx = Math.cos(angle) * size * 0.6;
+                const wy = Math.sin(angle) * size * 0.6;
+                g.rect(wx - size * 0.15, wy - size * 0.08, size * 0.5, size * 0.16).fill(strokeColor);
+            }
+
+            // Boss glow effect
+            g.circle(0, 0, size * 0.9).stroke({ width: 3, color: strokeColor, alpha: 0.5 });
+            g.circle(0, 0, size * 1.1).stroke({ width: 2, color: strokeColor, alpha: 0.3 });
+
+            // Boss name label
+            const nameText = new PIXI.Text({
+                text: enemyType,
+                style: {
+                    fill: 0xffffff,
+                    fontSize: 12,
+                    fontWeight: 'bold',
+                    stroke: { color: 0x000000, width: 3 }
+                }
+            });
+            nameText.anchor.set(0.5);
+            nameText.y = -size - 15;
+            enemy.addChild(nameText);
+        } else {
+            // Regular enemy visual
+            g.moveTo(size, 0)
+                .lineTo(-size * 0.7, -size * 0.7)
+                .lineTo(-size * 0.4, 0)
+                .lineTo(-size * 0.7, size * 0.7)
+                .closePath()
+                .fill(fillColor)
+                .stroke({ width: 2, color: strokeColor });
+
+            // Weapons
+            g.rect(size * 0.5, -size * 0.3, size * 0.4, size * 0.15).fill(strokeColor);
+            g.rect(size * 0.5, size * 0.15, size * 0.4, size * 0.15).fill(strokeColor);
+
+            // Add type-specific visual details
+            if (size > 25) {
+                // Large enemy - add engine glow
+                g.circle(-size * 0.4, 0, size * 0.15).fill(0xff6600);
+            } else if (size < 18) {
+                // Small enemy - add speed lines
+                g.moveTo(-size * 0.4, -size * 0.2).lineTo(-size * 0.8, -size * 0.3).stroke({ width: 1, color: strokeColor });
+                g.moveTo(-size * 0.4, size * 0.2).lineTo(-size * 0.8, size * 0.3).stroke({ width: 1, color: strokeColor });
+            }
+        }
 
         enemy.addChild(g);
+
+        // Add health bar for bosses and large enemies
+        if (isBoss || size > 25) {
+            const healthBarContainer = new PIXI.Container();
+            healthBarContainer.y = -size - (isBoss ? 30 : 20);
+
+            // Health bar background (red)
+            const healthBarBg = new PIXI.Graphics();
+            const barWidth = size * 1.5;
+            const barHeight = isBoss ? 6 : 4;
+            healthBarBg.rect(-barWidth / 2, 0, barWidth, barHeight).fill(0x440000);
+            healthBarContainer.addChild(healthBarBg);
+
+            // Health bar foreground (green)
+            const healthBarFg = new PIXI.Graphics();
+            healthBarFg.rect(-barWidth / 2, 0, barWidth, barHeight).fill(0x00ff00);
+            healthBarContainer.addChild(healthBarFg);
+
+            // Store references for updating
+            enemy.healthBarContainer = healthBarContainer;
+            enemy.healthBarFg = healthBarFg;
+            enemy.healthBarWidth = barWidth;
+
+            enemy.addChild(healthBarContainer);
+        }
+
         gameContainer.addChild(enemy);
         enemies.push(enemy);
+    }
+
+    // Update enemy health bar
+    function updateEnemyHealthBar(enemy) {
+        if (enemy.healthBarFg) {
+            const healthPercent = Math.max(0, enemy.health / enemy.maxHealth);
+            enemy.healthBarFg.clear();
+            enemy.healthBarFg.rect(-enemy.healthBarWidth / 2, 0, enemy.healthBarWidth * healthPercent, enemy.isBoss ? 6 : 4);
+
+            // Color changes based on health
+            if (healthPercent > 0.6) {
+                enemy.healthBarFg.fill(0x00ff00); // Green
+            } else if (healthPercent > 0.3) {
+                enemy.healthBarFg.fill(0xffff00); // Yellow
+            } else {
+                enemy.healthBarFg.fill(0xff0000); // Red
+            }
+        }
+    }
+
+    // Handle boss defeat - destroy all remaining enemies
+    function handleBossDefeat(bossX, bossY, bossName) {
+        bossDefeated = true;
+        createFloatingText(bossX, bossY, `${bossName} DEFEATED!`, 0xffff00, 24);
+
+        // Destroy all remaining enemies and make them drop resources
+        for (let i = enemies.length - 1; i >= 0; i--) {
+            const enemy = enemies[i];
+            if (!enemy.isBoss) { // Don't process the boss again
+                createExplosion(enemy.x, enemy.y, enemy.size);
+
+                // Drop resources from destroyed enemies
+                const resourceDrop = Math.floor(enemy.size * 3);
+                const numPieces = 3 + Math.floor(enemy.size / 10);
+                for (let k = 0; k < numPieces; k++) {
+                    createResourcePiece(enemy.x, enemy.y, Math.floor(resourceDrop / numPieces));
+                }
+
+                gameContainer.removeChild(enemy);
+                enemies.splice(i, 1);
+            }
+        }
+
+        // Show dramatic message
+        createFloatingText(app.screen.width / 2, app.screen.height / 2 + 50, 'ALL ENEMIES DESTROYED!', 0xff0000, 20);
+    }
+
+    // Create enemy group with coordinated behavior
+    function createEnemyGroup() {
+        const groupSize = 3 + Math.floor(Math.random() * 5); // 3-7 ships
+        const groupId = nextGroupId++;
+
+        // Determine spawn side and position
+        const side = Math.floor(Math.random() * 4);
+        let spawnX, spawnY;
+        if (side === 0) { // Top
+            spawnX = Math.random() * app.screen.width;
+            spawnY = -100;
+        } else if (side === 1) { // Right
+            spawnX = app.screen.width + 100;
+            spawnY = Math.random() * app.screen.height;
+        } else if (side === 2) { // Bottom
+            spawnX = Math.random() * app.screen.width;
+            spawnY = app.screen.height + 100;
+        } else { // Left
+            spawnX = -100;
+            spawnY = Math.random() * app.screen.height;
+        }
+
+        // Create group state
+        const group = {
+            id: groupId,
+            state: 'approaching', // approaching, attacking, retreating, regrouping
+            stateTimer: 0,
+            centerX: spawnX,
+            centerY: spawnY,
+            targetX: app.screen.width / 2,
+            targetY: app.screen.height / 2,
+            retreatX: spawnX,
+            retreatY: spawnY,
+            memberIds: []
+        };
+
+        // Formation patterns (V-formation or line)
+        const formations = [
+            // V-formation
+            (i, total) => ({
+                x: (i - (total - 1) / 2) * 40,
+                y: Math.abs(i - (total - 1) / 2) * 25
+            }),
+            // Line formation
+            (i, total) => ({
+                x: (i - (total - 1) / 2) * 50,
+                y: 0
+            }),
+            // Diamond formation
+            (i, total) => {
+                const half = Math.floor(total / 2);
+                if (i < half) {
+                    return { x: (i - half / 2) * 40, y: i * 30 };
+                } else {
+                    return { x: ((total - i - 1) - half / 2) * 40, y: i * 30 };
+                }
+            }
+        ];
+
+        const formation = formations[Math.floor(Math.random() * formations.length)];
+
+        // Create ships in formation
+        for (let i = 0; i < groupSize; i++) {
+            const offset = formation(i, groupSize);
+            const groupData = {
+                groupId: groupId,
+                role: i === 0 ? 'leader' : 'follower',
+                formationOffset: offset,
+                spawnPos: { x: spawnX, y: spawnY }
+            };
+
+            const enemy = createEnemyShip(false, groupData);
+            group.memberIds.push(enemies.length - 1); // Track enemy array index
+        }
+
+        enemyGroups.push(group);
+    }
+
+    // Update group AI
+    function updateGroupAI(group, time) {
+        // Find all living members
+        const members = group.memberIds
+            .map(id => enemies[id])
+            .filter(e => e && e.groupId === group.id);
+
+        if (members.length === 0) {
+            // Group wiped out
+            return false;
+        }
+
+        // Update group center based on members
+        let avgX = 0, avgY = 0;
+        members.forEach(m => {
+            avgX += m.x;
+            avgY += m.y;
+        });
+        group.centerX = avgX / members.length;
+        group.centerY = avgY / members.length;
+
+        // State machine
+        group.stateTimer += time.deltaTime;
+
+        switch (group.state) {
+            case 'approaching':
+                // Set target to player/station area
+                if (gameState.stationLevel > 0) {
+                    group.targetX = station.x + (Math.random() - 0.5) * 200;
+                    group.targetY = station.y + (Math.random() - 0.5) * 200;
+                } else {
+                    group.targetX = rocket.x + (Math.random() - 0.5) * 200;
+                    group.targetY = rocket.y + (Math.random() - 0.5) * 200;
+                }
+
+                // Check if reached target area
+                const distToTarget = Math.sqrt(
+                    (group.centerX - group.targetX) ** 2 +
+                    (group.centerY - group.targetY) ** 2
+                );
+
+                if (distToTarget < 250 || group.stateTimer > 180) {
+                    group.state = 'attacking';
+                    group.stateTimer = 0;
+                }
+                break;
+
+            case 'attacking':
+                // Attack for 5-8 seconds
+                if (group.stateTimer > 300 + Math.random() * 180) {
+                    group.state = 'retreating';
+                    group.stateTimer = 0;
+
+                    // Set retreat point away from combat
+                    const angle = Math.atan2(group.centerY - app.screen.height / 2, group.centerX - app.screen.width / 2);
+                    group.retreatX = app.screen.width / 2 + Math.cos(angle) * 400;
+                    group.retreatY = app.screen.height / 2 + Math.sin(angle) * 400;
+                }
+                break;
+
+            case 'retreating':
+                // Check if reached retreat point
+                const distToRetreat = Math.sqrt(
+                    (group.centerX - group.retreatX) ** 2 +
+                    (group.centerY - group.retreatY) ** 2
+                );
+
+                if (distToRetreat < 100 || group.stateTimer > 180) {
+                    group.state = 'regrouping';
+                    group.stateTimer = 0;
+                }
+                break;
+
+            case 'regrouping':
+                // Regroup for 2-3 seconds then approach again
+                if (group.stateTimer > 120 + Math.random() * 60) {
+                    group.state = 'approaching';
+                    group.stateTimer = 0;
+                }
+                break;
+        }
+
+        return true; // Group still active
     }
 
     // Actions
@@ -984,6 +1491,15 @@ async function init() {
     // Transition to next level
     function transitionToNextLevel() {
         gameState.currentLevel++;
+
+        // Reset boss state immediately for new level
+        bossSpawned = false;
+        bossDefeated = false;
+        bossAnnouncementShown = false;
+
+        // Reset resource collection phase
+        resourceCollectionPhase = false;
+        resourceCollectionTimer = 0;
 
         // Create teleportation effects for ship and station
         const shipTeleportRings = createTeleportEffect(rocket.x, rocket.y, 40);
@@ -1069,6 +1585,9 @@ async function init() {
                     gameContainer.removeChild(eb);
                 }
                 enemyBullets.length = 0;
+
+                // Clear enemy groups
+                enemyGroups.length = 0;
 
                 // Clear all resource pieces (prevent carrying over between levels)
                 for (const piece of resourcePieces) {
@@ -1231,7 +1750,7 @@ async function init() {
     // Game loop
     let lastResources = resources; // Track resource changes
     app.ticker.add((time) => {
-        // Rocket AI - Follow cursor
+        // Ship rotation - Face cursor
         const dx = cursorX - rocket.x;
         const dy = cursorY - rocket.y;
         const distanceToCursor = Math.sqrt(dx * dx + dy * dy);
@@ -1251,27 +1770,14 @@ async function init() {
             rocket.rotation -= rotationAmount;
         }
 
-        // Apply thrust if we're facing roughly the right direction and not too close
-        const slowdownDistance = 100; // Start slowing down when this close
-        const stopDistance = 30; // Stop moving when this close
-        const facingTarget = Math.abs(angleDiff) < Math.PI / 4; // Within 45 degrees
+        // Manual thrust control with Space or Backspace
+        const thrustPressed = keys[' '] || keys['Backspace'];
 
-        if (distanceToCursor > stopDistance && facingTarget) {
-            // Calculate thrust strength based on distance
-            let thrustMultiplier = 1.0;
-            if (distanceToCursor < slowdownDistance) {
-                // Gradually reduce thrust as we approach target
-                thrustMultiplier = distanceToCursor / slowdownDistance;
-            }
-
-            rocket.vx += Math.cos(rocket.rotation) * rocket.thrust * thrustMultiplier * time.deltaTime;
-            rocket.vy += Math.sin(rocket.rotation) * rocket.thrust * thrustMultiplier * time.deltaTime;
+        if (thrustPressed) {
+            // Apply thrust in the direction ship is facing
+            rocket.vx += Math.cos(rocket.rotation) * rocket.thrust * time.deltaTime;
+            rocket.vy += Math.sin(rocket.rotation) * rocket.thrust * time.deltaTime;
             rocketEngine.visible = true;
-        } else if (distanceToCursor <= stopDistance) {
-            // Apply braking when very close to cursor
-            rocket.vx *= 0.95;
-            rocket.vy *= 0.95;
-            rocketEngine.visible = false;
         } else {
             rocketEngine.visible = false;
         }
@@ -1307,11 +1813,13 @@ async function init() {
         }
 
         // Apply damping only if not at boundary
+        // Stronger damping when not thrusting for quicker stops
+        const dampingFactor = thrustPressed ? 0.99 : 0.96;
         if (rocket.x > 0 && rocket.x < app.screen.width) {
-            rocket.vx *= 0.99;
+            rocket.vx *= dampingFactor;
         }
         if (rocket.y > 0 && rocket.y < app.screen.height) {
-            rocket.vy *= 0.99;
+            rocket.vy *= dampingFactor;
         }
 
         // Station rotation
@@ -1617,20 +2125,37 @@ async function init() {
                     const enemy = enemies[j];
                     if (checkCollision(enemy, a, enemy.r, a.r)) {
                         enemy.health -= a.r * 0.5; // Damage based on asteroid size
+                        updateEnemyHealthBar(enemy);
                         hitSomething = true;
                         hitPosition = { x: a.x, y: a.y };
 
                         // Check if enemy destroyed
                         if (enemy.health <= 0) {
                             createExplosion(enemy.x, enemy.y, enemy.size);
-                            // Drop resources based on size
-                            const resourceDrop = Math.floor(enemy.size * 3);
-                            const numPieces = 3 + Math.floor(enemy.size / 10);
-                            for (let k = 0; k < numPieces; k++) {
-                                createResourcePiece(enemy.x, enemy.y, Math.floor(resourceDrop / numPieces));
+
+                            // Check if this was a boss
+                            if (enemy.isBoss) {
+                                // Boss drops 10x resources
+                                const bossResourceDrop = Math.floor(enemy.size * 30);
+                                const numPieces = 15 + Math.floor(enemy.size / 5);
+                                for (let k = 0; k < numPieces; k++) {
+                                    createResourcePiece(enemy.x, enemy.y, Math.floor(bossResourceDrop / numPieces));
+                                }
+                                gameContainer.removeChild(enemy);
+                                enemies.splice(j, 1);
+
+                                // Handle boss defeat - destroy all enemies
+                                handleBossDefeat(enemy.x, enemy.y, enemy.enemyType);
+                            } else {
+                                // Regular enemy drop
+                                const resourceDrop = Math.floor(enemy.size * 3);
+                                const numPieces = 3 + Math.floor(enemy.size / 10);
+                                for (let k = 0; k < numPieces; k++) {
+                                    createResourcePiece(enemy.x, enemy.y, Math.floor(resourceDrop / numPieces));
+                                }
+                                gameContainer.removeChild(enemy);
+                                enemies.splice(j, 1);
                             }
-                            gameContainer.removeChild(enemy);
-                            enemies.splice(j, 1);
                         }
                         break;
                     }
@@ -1672,16 +2197,87 @@ async function init() {
         const enemySpawnInterval = Math.max(minInterval, baseInterval - defensiveStrength * reductionPerLevel);
 
         if (now - lastEnemySpawnTime > enemySpawnInterval) {
-            createEnemyShip();
+            createEnemyGroup();
             lastEnemySpawnTime = now;
         }
 
-        // Update enemies
+        // Update enemy groups
+        for (let i = enemyGroups.length - 1; i >= 0; i--) {
+            const active = updateGroupAI(enemyGroups[i], time);
+            if (!active) {
+                enemyGroups.splice(i, 1);
+            }
+        }
+
+        // Update enemies with group behavior
         for (let i = enemies.length - 1; i >= 0; i--) {
             const enemy = enemies[i];
 
-            // Determine target (prioritize ship if close, otherwise station)
+            // Find enemy's group
+            const group = enemyGroups.find(g => g.id === enemy.groupId);
+
+            // Determine target and movement based on group state or individual behavior (bosses)
             let target = null;
+            let targetX, targetY;
+
+            if (enemy.isBoss || !group) {
+                // Bosses and solo enemies use old behavior
+                const distToShip = Math.sqrt((enemy.x - rocket.x) ** 2 + (enemy.y - rocket.y) ** 2);
+                const distToStation = gameState.stationLevel > 0 ?
+                    Math.sqrt((enemy.x - station.x) ** 2 + (enemy.y - station.y) ** 2) : Infinity;
+
+                if (distToShip < 400 || distToStation === Infinity) {
+                    target = rocket;
+                } else {
+                    target = station;
+                }
+                targetX = target.x;
+                targetY = target.y;
+            } else {
+                // Group members follow group behavior
+                switch (group.state) {
+                    case 'approaching':
+                    case 'attacking':
+                        // Move towards group target while maintaining formation
+                        targetX = group.targetX + enemy.formationOffset.x;
+                        targetY = group.targetY + enemy.formationOffset.y;
+                        break;
+
+                    case 'retreating':
+                        // Move towards retreat point
+                        targetX = group.retreatX + enemy.formationOffset.x;
+                        targetY = group.retreatY + enemy.formationOffset.y;
+                        break;
+
+                    case 'regrouping':
+                        // Move to formation position around group center
+                        targetX = group.centerX + enemy.formationOffset.x;
+                        targetY = group.centerY + enemy.formationOffset.y;
+                        break;
+                }
+            }
+
+            // Move towards target
+            const dx = targetX - enemy.x;
+            const dy = targetY - enemy.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+
+            // Movement speed varies by group state
+            let moveSpeed = enemy.speed;
+            if (group) {
+                if (group.state === 'retreating') {
+                    moveSpeed *= 1.3; // Faster retreat
+                } else if (group.state === 'regrouping') {
+                    moveSpeed *= 0.7; // Slower regrouping
+                }
+            }
+
+            if (dist > 50) { // Move towards target
+                enemy.x += (dx / dist) * moveSpeed * time.deltaTime;
+                enemy.y += (dy / dist) * moveSpeed * time.deltaTime;
+            }
+
+            // Determine actual combat target for rotation and firing
             const distToShip = Math.sqrt((enemy.x - rocket.x) ** 2 + (enemy.y - rocket.y) ** 2);
             const distToStation = gameState.stationLevel > 0 ?
                 Math.sqrt((enemy.x - station.x) ** 2 + (enemy.y - station.y) ** 2) : Infinity;
@@ -1692,50 +2288,85 @@ async function init() {
                 target = station;
             }
 
-            // Move towards target
-            const dx = target.x - enemy.x;
-            const dy = target.y - enemy.y;
-            const dist = Math.sqrt(dx * dx + dy * dy);
+            // Rotate to face combat target
+            const targetDx = target.x - enemy.x;
+            const targetDy = target.y - enemy.y;
+            enemy.rotation = Math.atan2(targetDy, targetDx);
 
-            if (dist > 200) { // Keep distance
-                enemy.x += (dx / dist) * enemy.speed * time.deltaTime;
-                enemy.y += (dy / dist) * enemy.speed * time.deltaTime;
-            }
-
-            // Rotate to face target
-            enemy.rotation = Math.atan2(dy, dx);
-
-            // Fire at target if in range
+            // Fire at target if in range and in attacking state (or boss/solo)
             const fireRange = 350;
-            if (dist < fireRange) {
+            const distToCombatTarget = Math.sqrt(targetDx * targetDx + targetDy * targetDy);
+            const canFire = enemy.isBoss || !group || group.state === 'attacking' || group.state === 'approaching';
+
+            if (distToCombatTarget < fireRange && canFire) {
                 const now = Date.now();
-                if (now - enemy.lastShotTime > enemy.fireRate) {
-                    enemy.lastShotTime = now;
 
-                    // Calculate angle with inaccuracy
-                    const angleToTarget = Math.atan2(dy, dx);
-                    const inaccuracy = (Math.random() - 0.5) * enemy.accuracy;
-                    const finalAngle = angleToTarget + inaccuracy;
+                // Boss burst firing logic
+                if (enemy.isBoss) {
+                    if (enemy.burstCooldown > 0) {
+                        enemy.burstCooldown -= time.deltaTime * 16.67; // Convert to ms
+                    } else if (enemy.burstShotsFired < enemy.burstCount) {
+                        if (now - enemy.lastShotTime > 100) { // Rapid burst shots
+                            enemy.lastShotTime = now;
+                            enemy.burstShotsFired++;
 
-                    // Create enemy bullet with level-specific damage
-                    const eb = new PIXI.Graphics().circle(0, 0, 3).fill(0xff4444);
-                    eb.x = enemy.x + Math.cos(enemy.rotation) * enemy.size;
-                    eb.y = enemy.y + Math.sin(enemy.rotation) * enemy.size;
-                    eb.vx = Math.cos(finalAngle) * 4;
-                    eb.vy = Math.sin(finalAngle) * 4;
-                    eb.life = 120;
-                    eb.damage = (Math.floor(enemy.size / 5) + 5) * enemy.damageMult; // Apply damage multiplier
-                    eb.r = 3;
+                            // Boss fires multiple bullets in a spread
+                            for (let b = 0; b < 3; b++) {
+                                const angleToTarget = Math.atan2(targetDy, targetDx);
+                                const spreadAngle = (b - 1) * 0.15;
+                                const inaccuracy = (Math.random() - 0.5) * enemy.accuracy;
+                                const finalAngle = angleToTarget + spreadAngle + inaccuracy;
 
-                    gameContainer.addChild(eb);
-                    enemyBullets.push(eb);
+                                const eb = new PIXI.Graphics().circle(0, 0, 5).fill(0xff0000);
+                                eb.x = enemy.x + Math.cos(enemy.rotation) * enemy.size;
+                                eb.y = enemy.y + Math.sin(enemy.rotation) * enemy.size;
+                                eb.vx = Math.cos(finalAngle) * 5;
+                                eb.vy = Math.sin(finalAngle) * 5;
+                                eb.life = 150;
+                                eb.damage = enemy.damage;
+                                eb.r = 5;
+
+                                gameContainer.addChild(eb);
+                                enemyBullets.push(eb);
+                            }
+
+                            // Check if burst is complete
+                            if (enemy.burstShotsFired >= enemy.burstCount) {
+                                enemy.burstShotsFired = 0;
+                                enemy.burstCooldown = enemy.fireRate;
+                            }
+                        }
+                    }
+                } else {
+                    // Regular enemy firing
+                    if (now - enemy.lastShotTime > enemy.fireRate) {
+                        enemy.lastShotTime = now;
+
+                        // Calculate angle with inaccuracy
+                        const angleToTarget = Math.atan2(targetDy, targetDx);
+                        const inaccuracy = (Math.random() - 0.5) * enemy.accuracy;
+                        const finalAngle = angleToTarget + inaccuracy;
+
+                        // Create enemy bullet with type-specific damage
+                        const eb = new PIXI.Graphics().circle(0, 0, 3).fill(0xff4444);
+                        eb.x = enemy.x + Math.cos(enemy.rotation) * enemy.size;
+                        eb.y = enemy.y + Math.sin(enemy.rotation) * enemy.size;
+                        eb.vx = Math.cos(finalAngle) * 4;
+                        eb.vy = Math.sin(finalAngle) * 4;
+                        eb.life = 120;
+                        eb.damage = enemy.damage;
+                        eb.r = 3;
+
+                        gameContainer.addChild(eb);
+                        enemyBullets.push(eb);
+                    }
                 }
             }
 
-            // Remove if too far off-screen
+            // Remove if too far off-screen (except bosses - they should stay in play)
             const margin = 200;
-            if (enemy.x < -margin || enemy.x > app.screen.width + margin ||
-                enemy.y < -margin || enemy.y > app.screen.height + margin) {
+            if (!enemy.isBoss && (enemy.x < -margin || enemy.x > app.screen.width + margin ||
+                enemy.y < -margin || enemy.y > app.screen.height + margin)) {
                 gameContainer.removeChild(enemy);
                 enemies.splice(i, 1);
             }
@@ -1781,6 +2412,7 @@ async function init() {
                 const enemy = enemies[j];
                 if (checkCollision(b, enemy, 2, enemy.r)) {
                     enemy.health -= b.damage * 5; // Player bullets more effective
+                    updateEnemyHealthBar(enemy);
                     createExplosion(b.x, b.y, 5);
 
                     gameContainer.removeChild(b);
@@ -1788,14 +2420,30 @@ async function init() {
 
                     if (enemy.health <= 0) {
                         createExplosion(enemy.x, enemy.y, enemy.size);
-                        // Drop resources based on size
-                        const resourceDrop = Math.floor(enemy.size * 3);
-                        const numPieces = 3 + Math.floor(enemy.size / 10);
-                        for (let k = 0; k < numPieces; k++) {
-                            createResourcePiece(enemy.x, enemy.y, Math.floor(resourceDrop / numPieces));
+
+                        // Check if this was a boss
+                        if (enemy.isBoss) {
+                            // Boss drops 10x resources
+                            const bossResourceDrop = Math.floor(enemy.size * 30);
+                            const numPieces = 15 + Math.floor(enemy.size / 5);
+                            for (let k = 0; k < numPieces; k++) {
+                                createResourcePiece(enemy.x, enemy.y, Math.floor(bossResourceDrop / numPieces));
+                            }
+                            gameContainer.removeChild(enemy);
+                            enemies.splice(j, 1);
+
+                            // Handle boss defeat - destroy all enemies
+                            handleBossDefeat(enemy.x, enemy.y, enemy.enemyType);
+                        } else {
+                            // Regular enemy drop
+                            const resourceDrop = Math.floor(enemy.size * 3);
+                            const numPieces = 3 + Math.floor(enemy.size / 10);
+                            for (let k = 0; k < numPieces; k++) {
+                                createResourcePiece(enemy.x, enemy.y, Math.floor(resourceDrop / numPieces));
+                            }
+                            gameContainer.removeChild(enemy);
+                            enemies.splice(j, 1);
                         }
-                        gameContainer.removeChild(enemy);
-                        enemies.splice(j, 1);
                     }
                     break;
                 }
@@ -1809,6 +2457,7 @@ async function init() {
                 const enemy = enemies[j];
                 if (checkCollision(sb, enemy, 3, enemy.r)) {
                     enemy.health -= sb.damage * 3;
+                    updateEnemyHealthBar(enemy);
                     createExplosion(sb.x, sb.y, 5);
 
                     gameContainer.removeChild(sb);
@@ -1816,13 +2465,30 @@ async function init() {
 
                     if (enemy.health <= 0) {
                         createExplosion(enemy.x, enemy.y, enemy.size);
-                        const resourceDrop = Math.floor(enemy.size * 3);
-                        const numPieces = 3 + Math.floor(enemy.size / 10);
-                        for (let k = 0; k < numPieces; k++) {
-                            createResourcePiece(enemy.x, enemy.y, Math.floor(resourceDrop / numPieces));
+
+                        // Check if this was a boss
+                        if (enemy.isBoss) {
+                            // Boss drops 10x resources
+                            const bossResourceDrop = Math.floor(enemy.size * 30);
+                            const numPieces = 15 + Math.floor(enemy.size / 5);
+                            for (let k = 0; k < numPieces; k++) {
+                                createResourcePiece(enemy.x, enemy.y, Math.floor(bossResourceDrop / numPieces));
+                            }
+                            gameContainer.removeChild(enemy);
+                            enemies.splice(j, 1);
+
+                            // Handle boss defeat - destroy all enemies
+                            handleBossDefeat(enemy.x, enemy.y, enemy.enemyType);
+                        } else {
+                            // Regular enemy drop
+                            const resourceDrop = Math.floor(enemy.size * 3);
+                            const numPieces = 3 + Math.floor(enemy.size / 10);
+                            for (let k = 0; k < numPieces; k++) {
+                                createResourcePiece(enemy.x, enemy.y, Math.floor(resourceDrop / numPieces));
+                            }
+                            gameContainer.removeChild(enemy);
+                            enemies.splice(j, 1);
                         }
-                        gameContainer.removeChild(enemy);
-                        enemies.splice(j, 1);
                     }
                     break;
                 }
@@ -1838,9 +2504,12 @@ async function init() {
             let dy = rocket.y - piece.y;
             let distance = Math.sqrt(dx * dx + dy * dy);
 
-            if (distance < piece.pullRadius) {
-                // Pull toward ship
-                const pullStrength = 0.3;
+            // Enhanced pull radius during resource collection phase
+            const shipPullRadius = resourceCollectionPhase ? piece.pullRadius * 3 : piece.pullRadius;
+
+            if (distance < shipPullRadius) {
+                // Pull toward ship (stronger during collection phase)
+                const pullStrength = resourceCollectionPhase ? 0.6 : 0.3;
                 piece.vx += (dx / distance) * pullStrength * time.deltaTime;
                 piece.vy += (dy / distance) * pullStrength * time.deltaTime;
             }
@@ -1848,14 +2517,16 @@ async function init() {
             // Check if station can pull it in (requires station level 2+)
             if (gameState.stationLevel >= 2) {
                 // Pull radius: Level 2: 100px, Level 10: 340px
-                const stationPullRadius = 100 + Math.min(gameState.stationLevel - 2, 8) * 30;
+                const basePullRadius = 100 + Math.min(gameState.stationLevel - 2, 8) * 30;
+                const stationPullRadius = resourceCollectionPhase ? basePullRadius * 2 : basePullRadius;
                 const sdx = station.x - piece.x;
                 const sdy = station.y - piece.y;
                 const stationDistance = Math.sqrt(sdx * sdx + sdy * sdy);
 
                 if (stationDistance < stationPullRadius) {
                     // Pull toward station (stronger than ship pull, increases with level)
-                    const stationPullStrength = 0.5 + (gameState.stationLevel - 2) * 0.05;
+                    const basePullStrength = 0.5 + (gameState.stationLevel - 2) * 0.05;
+                    const stationPullStrength = resourceCollectionPhase ? basePullStrength * 1.5 : basePullStrength;
                     piece.vx += (sdx / stationDistance) * stationPullStrength * time.deltaTime;
                     piece.vy += (sdy / stationDistance) * stationPullStrength * time.deltaTime;
                 }
@@ -1864,6 +2535,22 @@ async function init() {
             // Realistic space physics - constant velocity drift (no damping)
             piece.x += piece.vx * time.deltaTime;
             piece.y += piece.vy * time.deltaTime;
+
+            // Update lifetime and handle fading
+            piece.lifetime += time.deltaTime;
+
+            // Fade out after 30 seconds (1800 frames)
+            if (piece.lifetime > piece.fadeStartTime) {
+                const fadeProgress = (piece.lifetime - piece.fadeStartTime) / (piece.maxLifetime - piece.fadeStartTime);
+                piece.alpha = 1 - fadeProgress; // Fade from 1.0 to 0.0
+            }
+
+            // Remove if lifetime exceeded (60 seconds)
+            if (piece.lifetime >= piece.maxLifetime) {
+                gameContainer.removeChild(piece);
+                resourcePieces.splice(i, 1);
+                continue;
+            }
 
             // Remove if off-screen
             const margin = 50;
@@ -1972,9 +2659,127 @@ async function init() {
             upgradeUIUpdate = false;
         }
 
-        // Check for level progression
-        if (checkLevelProgression()) {
-            transitionToNextLevel();
+        // Check if mission objectives met and spawn boss
+        const requirements = LEVEL_CONFIG[gameState.currentLevel].requirements;
+        let objectivesMet = false;
+
+        if (gameState.currentLevel === 0) {
+            // Level 0 - only ship gun requirement
+            objectivesMet = gameState.ship.gunLevel >= requirements.shipGunLevel;
+        } else {
+            // Other levels - check all requirements
+            objectivesMet = gameState.stationLevel >= requirements.stationLevel &&
+                gameState.stationGunLevel >= requirements.stationGunLevel &&
+                gameState.ship.gunLevel >= requirements.shipGunLevel;
+        }
+
+        if (objectivesMet && !bossSpawned && !bossDefeated) {
+            // Spawn the boss
+            bossSpawned = true;
+            createEnemyShip(true); // true = boss
+
+            if (!bossAnnouncementShown) {
+                const bossName = LEVEL_CONFIG[gameState.currentLevel].boss.name;
+                createFloatingText(app.screen.width / 2, app.screen.height / 2 - 100, `WARNING: ${bossName} APPROACHING!`, 0xff0000, 24);
+                bossAnnouncementShown = true;
+            }
+        }
+
+        // Check for level progression or final victory (only if boss defeated)
+        const canProgress = checkLevelProgression();
+        const isFinalLevel = gameState.currentLevel === 3;
+
+        if (bossDefeated && !resourceCollectionPhase && (canProgress || isFinalLevel)) {
+            // Start resource collection phase
+            resourceCollectionPhase = true;
+            resourceCollectionTimer = 0;
+
+            if (isFinalLevel) {
+                createFloatingText(app.screen.width / 2, app.screen.height / 2, 'VICTORY! COLLECTING RESOURCES...', 0xffff00, 24);
+            } else {
+                createFloatingText(app.screen.width / 2, app.screen.height / 2, 'COLLECTING RESOURCES...', 0xffff00, 20);
+            }
+        }
+
+        // Update resource collection phase
+        if (resourceCollectionPhase) {
+            resourceCollectionTimer += time.deltaTime;
+
+            // Visual effect: pulsing collection radius for ship
+            const shipPulse = Math.sin(resourceCollectionTimer / 10) * 0.3 + 0.7;
+            const shipCollectionRadius = 80 * 3; // 3x normal radius
+            const shipGlow = new PIXI.Graphics();
+            shipGlow.circle(0, 0, shipCollectionRadius).stroke({
+                width: 3,
+                color: 0x00ffff,
+                alpha: shipPulse * 0.4
+            });
+            shipGlow.circle(0, 0, shipCollectionRadius * 0.8).stroke({
+                width: 2,
+                color: 0x00ff00,
+                alpha: shipPulse * 0.3
+            });
+            rocket.addChild(shipGlow);
+
+            // Visual effect: pulsing collection radius for station
+            if (gameState.stationLevel >= 2) {
+                const stationPulse = Math.sin(resourceCollectionTimer / 10 + Math.PI) * 0.3 + 0.7;
+                const basePullRadius = 100 + Math.min(gameState.stationLevel - 2, 8) * 30;
+                const stationCollectionRadius = basePullRadius * 2; // 2x normal radius
+                const stationGlow = new PIXI.Graphics();
+                stationGlow.circle(0, 0, stationCollectionRadius).stroke({
+                    width: 4,
+                    color: 0x00ffff,
+                    alpha: stationPulse * 0.5
+                });
+                stationGlow.circle(0, 0, stationCollectionRadius * 0.9).stroke({
+                    width: 3,
+                    color: 0x00ff00,
+                    alpha: stationPulse * 0.4
+                });
+                stationGlow.circle(0, 0, stationCollectionRadius * 0.8).stroke({
+                    width: 2,
+                    color: 0xffff00,
+                    alpha: stationPulse * 0.3
+                });
+                station.addChild(stationGlow);
+
+                // Clean up glow after rendering
+                requestAnimationFrame(() => {
+                    if (stationGlow.parent) {
+                        station.removeChild(stationGlow);
+                        stationGlow.destroy();
+                    }
+                });
+            }
+
+            // Clean up ship glow after rendering
+            requestAnimationFrame(() => {
+                if (shipGlow.parent) {
+                    rocket.removeChild(shipGlow);
+                    shipGlow.destroy();
+                }
+            });
+
+            // Show countdown
+            const timeRemaining = Math.ceil((COLLECTION_PHASE_DURATION - resourceCollectionTimer) / 60);
+            if (Math.floor(resourceCollectionTimer) % 60 === 0 && timeRemaining > 0 && timeRemaining <= 10) {
+                createFloatingText(app.screen.width / 2, 100, `${timeRemaining}s`, 0x00ffff, 18);
+            }
+
+            // Transition when time is up
+            if (resourceCollectionTimer >= COLLECTION_PHASE_DURATION) {
+                resourceCollectionPhase = false;
+                resourceCollectionTimer = 0;
+
+                if (isFinalLevel) {
+                    // Final level - show victory message instead of transitioning
+                    createFloatingText(app.screen.width / 2, app.screen.height / 2, 'GAME COMPLETE!', 0xffff00, 32);
+                    createFloatingText(app.screen.width / 2, app.screen.height / 2 + 50, 'All sectors conquered!', 0x00ff00, 20);
+                } else {
+                    transitionToNextLevel();
+                }
+            }
         }
 
         // Update cursor position
@@ -2170,6 +2975,7 @@ async function init() {
 
     function updateGoalProgress() {
         const requirements = LEVEL_CONFIG[gameState.currentLevel].requirements;
+        const bossName = LEVEL_CONFIG[gameState.currentLevel].boss.name;
 
         if (gameState.currentLevel === 0) {
             // Level 0 - Tutorial level (only ship gun requirement)
@@ -2179,22 +2985,30 @@ async function init() {
                 <div class="goal-item ${gameState.ship.gunLevel >= requirements.shipGunLevel ? 'completed' : ''}">
                     ${gameState.ship.gunLevel >= requirements.shipGunLevel ? '✓' : '○'} Ship Guns: ${gameState.ship.gunLevel}/${requirements.shipGunLevel}
                 </div>
+                <div class="goal-item ${bossDefeated ? 'completed' : ''}">
+                    ${bossDefeated ? '✓' : '○'} Defeat ${bossName}
+                </div>
             `;
         } else if (gameState.currentLevel === 3) {
             // Max level - show victory condition
+            const allObjectivesMet = gameState.stationLevel >= requirements.stationLevel &&
+                gameState.stationGunLevel >= requirements.stationGunLevel &&
+                gameState.ship.gunLevel >= requirements.shipGunLevel;
+
             goalProgressDiv.innerHTML = `
                 <div class="goal-item ${gameState.stationLevel >= requirements.stationLevel ? 'completed' : ''}">
-                    ✓ Station Level: ${gameState.stationLevel}/${requirements.stationLevel}
+                    ${gameState.stationLevel >= requirements.stationLevel ? '✓' : '○'} Station Level: ${gameState.stationLevel}/${requirements.stationLevel}
                 </div>
                 <div class="goal-item ${gameState.stationGunLevel >= requirements.stationGunLevel ? 'completed' : ''}">
-                    ✓ Station Guns: ${gameState.stationGunLevel}/${requirements.stationGunLevel}
+                    ${gameState.stationGunLevel >= requirements.stationGunLevel ? '✓' : '○'} Station Guns: ${gameState.stationGunLevel}/${requirements.stationGunLevel}
                 </div>
                 <div class="goal-item ${gameState.ship.gunLevel >= requirements.shipGunLevel ? 'completed' : ''}">
-                    ✓ Ship Guns: ${gameState.ship.gunLevel}/${requirements.shipGunLevel}
+                    ${gameState.ship.gunLevel >= requirements.shipGunLevel ? '✓' : '○'} Ship Guns: ${gameState.ship.gunLevel}/${requirements.shipGunLevel}
                 </div>
-                ${gameState.stationLevel >= requirements.stationLevel &&
-                  gameState.stationGunLevel >= requirements.stationGunLevel &&
-                  gameState.ship.gunLevel >= requirements.shipGunLevel ?
+                <div class="goal-item ${bossDefeated ? 'completed' : ''}">
+                    ${bossDefeated ? '✓' : '○'} Defeat ${bossName}
+                </div>
+                ${allObjectivesMet && bossDefeated ?
                   '<div class="goal-complete">🎉 VICTORY! All goals achieved!</div>' :
                   '<div class="goal-incomplete">Complete all goals to win!</div>'}
             `;
@@ -2211,6 +3025,9 @@ async function init() {
                 </div>
                 <div class="goal-item ${gameState.ship.gunLevel >= requirements.shipGunLevel ? 'completed' : ''}">
                     ${gameState.ship.gunLevel >= requirements.shipGunLevel ? '✓' : '○'} Ship Guns: ${gameState.ship.gunLevel}/${requirements.shipGunLevel}
+                </div>
+                <div class="goal-item ${bossDefeated ? 'completed' : ''}">
+                    ${bossDefeated ? '✓' : '○'} Defeat ${bossName}
                 </div>
             `;
         }

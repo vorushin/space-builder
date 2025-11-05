@@ -12,20 +12,22 @@ The game features a **4-level progression system** where players advance through
 
 **Mouse Controls**:
 - **Click to Lock**: Click on the game canvas to enable pointer lock mode
-- **Mouse Movement**: Ship automatically follows cursor position with AI-based navigation
+- **Mouse Movement**: Ship rotates to face cursor position
 - **Left Mouse Button (Hold)**: Fire weapons continuously
 - **ESC Key**: Unlock mouse cursor to interact with UI elements
 
-**Keyboard Shortcuts**:
+**Keyboard Controls**:
+- **Space or Backspace**: Thrust forward (ship accelerates in the direction it's facing)
+- **Release thrust keys**: Ship slows down with increased damping
 - **1**: Upgrade Ship Weapons
 - **2**: Upgrade Station Level
 - **3**: Upgrade Station Defense Guns
 
-The ship uses intelligent movement AI that:
+The ship uses manual thrust controls that:
 - Rotates smoothly towards the cursor position
-- Applies thrust when facing the target direction (within 45°)
-- Automatically slows down when approaching the cursor (within 100px)
-- Stops engines and brakes gently when very close (within 30px)
+- Accelerates only when Space or Backspace is held
+- Slows down faster when thrust is not applied (0.96 damping vs 0.99 when thrusting)
+- Allows precise positioning for stationary firing
 
 ## Development Commands
 
@@ -89,6 +91,7 @@ LEVEL_CONFIG = {
 - `bullets[]` - Player-fired projectiles
 - `stationBullets[]` - Auto-targeting station defense turrets
 - `enemies[]` - Enemy ships that spawn and attack (cleared on level transitions)
+- `enemyGroups[]` - Swarm coordination data (id, state, centerX/Y, targetX/Y, retreatX/Y, memberIds)
 - `enemyBullets[]` - Projectiles fired by enemy ships (cleared on level transitions)
 - `resourcePieces[]` - Collectible resources dropped from destroyed asteroids
 - `floatingTexts[]` - Visual feedback for resource collection
@@ -108,9 +111,9 @@ LEVEL_CONFIG = {
 
 ### Game Loop Flow (main ticker, lines 1233-1966)
 
-1. **Ship AI Navigation**: Mouse-following behavior with rotation, thrust control, and automatic deceleration (lines 1234-1282)
-2. **Mouse-Based Shooting**: Continuous fire when left mouse button is held (lines 1279-1282)
-3. **Ship Physics**: Velocity damping (0.99), screen boundary clamping
+1. **Ship Manual Controls**: Rotation towards cursor, manual thrust with Space/Backspace keys (lines 1470-1500)
+2. **Mouse-Based Shooting**: Continuous fire when left mouse button is held (lines 1502-1504)
+3. **Ship Physics**: Velocity damping (0.99 when thrusting, 0.96 when coasting), screen boundary clamping
 3. **Station Systems**: Rotation, auto-targeting guns, passive abilities (health regen, resource production)
 4. **Bullet Updates**: Movement, lifetime, collision with asteroids/enemies, splash damage
 5. **Station Bullet Updates**: Movement, collision with asteroids/enemies
@@ -123,13 +126,14 @@ LEVEL_CONFIG = {
 12. **Visual Effects**: Floating text, explosion particles
 13. **Health Checks**: Ship/station destruction and respawn
 14. **UI Updates**: Health bars, resource count, action list, goal progress (dirty flag optimization)
-15. **Level Progression**: Check requirements and trigger level transitions
-16. **Cursor Update**: Update custom cursor position and visibility (lines 1962-1965)
+15. **Level Progression**: Check requirements, boss defeat, trigger resource collection phase
+16. **Resource Collection Phase**: 10-second enhanced collection with pulsing visual effects and countdown
+17. **Cursor Update**: Update custom cursor position and visibility (lines 1962-1965)
 
 ### Key Code Locations
 
 - **Input Handling**: `main.js:1142-1228` - Pointer lock, mouse tracking, keyboard shortcuts
-- **Ship AI Navigation**: `main.js:1234-1282` - Mouse-following movement logic with deceleration
+- **Ship Manual Controls**: `main.js:1470-1500` - Rotation towards cursor, manual thrust control
 - **Custom Cursor**: `main.js:140-149, 1962-1965` - Visual crosshair that follows mouse
 - **Ship Weapon System**: `main.js:638-718` - `shoot()` function with multi-shot, fire rate, splash damage
 - **Station Auto-Targeting**: `main.js:571-637` - Finds nearest enemy/asteroid, fires station guns with spread
@@ -139,20 +143,41 @@ LEVEL_CONFIG = {
 - **Bullet-Asteroid Collision**: `main.js:346-408` - Includes splash damage processing
 - **Station Bullet Collision**: `main.js:424-481` - Auto-targeting bullets vs asteroids
 - **Asteroid Physics & Collisions**: `main.js:484-563` - Movement, collisions with ship/station/enemies
-- **Enemy Spawning**: `main.js:565-583` - Dynamic spawn rate calculation
-- **Enemy AI**: `main.js:586-648` - Target selection, movement, rotation, firing
-- **Enemy Bullets**: `main.js:651-681` - Movement, collision with ship/station
+- **Enemy Group System**: `main.js:1225-1301` - `createEnemyGroup()` spawns 3-7 ships in formation
+- **Group AI**: `main.js:1303-1386` - `updateGroupAI()` manages swarm state machine (approach/attack/retreat/regroup)
+- **Enemy Swarm Movement**: `main.js:2141-2223` - Group-based movement with formation maintenance
+- **Enemy Health Bars**: `main.js:1162-1185, 1211-1227` - Health bars for bosses and large enemies (size > 25)
+- **Boss Defeat Handler**: `main.js:1229-1254` - `handleBossDefeat()` destroys all enemies and drops resources
+- **Boss Creation**: `main.js:1027-1061` - Adaptive HP calculation based on player weapon power
 - **Player Bullets vs Enemies**: `main.js:684-709` - Collision and damage processing
 - **Station Bullets vs Enemies**: `main.js:712-736` - Collision and damage processing
 - **Resource Pull Mechanics**: `main.js:739-798` - Magnetic pull from ship and station
+- **Resource Lifetime**: `main.js:2539-2553` - 60-second lifetime with 30-second fade-out
 - **Collision Detection**: `main.js:846-851` - Simple circle-circle distance check
 - **Level Progression Check**: `main.js:668-687` - `checkLevelProgression()` validates requirements (special handling for Level 0)
+- **Resource Collection Phase**: `main.js:2669-2764` - 10-second phase with enhanced pull radii, visual effects, countdown, and final level handling
 - **Level Transition**: `main.js:717-879` - `transitionToNextLevel()` with teleportation effects, entity cleanup, repositioning
 - **Teleportation Effects**: `main.js:690-714` - `createTeleportEffect()` creates expanding ring visuals
 - **Dynamic Background**: `main.js:71-88` - `createStars()` generates level-specific star fields
 - **Goal Tracking UI**: `main.js:908-954` - `updateGoalProgress()` displays requirements and completion
 
 ### Level Transition System
+
+**Resource Collection Phase** (10 seconds before transition):
+- Triggered when all mission objectives are met and boss is defeated (all levels including final)
+- **Enhanced Pull Radii**:
+  - Ship: **3× normal radius** (80px → 240px)
+  - Station: **2× normal radius** (100-340px → 200-680px based on level)
+- **Enhanced Pull Strength**: Resources pulled faster (1.5-2× normal strength)
+- **Visual Effects**:
+  - Pulsing cyan/green/yellow circles show collection radius
+  - Alternating pulse between ship and station
+  - "COLLECTING RESOURCES..." message (or "VICTORY! COLLECTING RESOURCES..." on final level)
+  - Countdown timer in final 10 seconds
+- Resources visibly stream towards ship and station
+- **After 10 seconds**:
+  - Levels 0-2: Automatic transition to next level
+  - Level 3 (Final): "GAME COMPLETE! All sectors conquered!" message displayed
 
 **Teleportation Visual Effect** (lines 690-714):
 - Creates 5 expanding rings for ship and station
@@ -176,16 +201,15 @@ ring.destroy({ children: true, texture: true, baseTexture: true });  // Complete
 
 ### Physics System
 
-**Ship AI Movement** (lines 1234-1282):
-- **Target Tracking**: Calculates angle and distance to cursor position
-- **Smooth Rotation**: Rotates towards target with normalized angle difference
-- **Intelligent Thrust**: Only applies thrust when facing target (within 45°)
-- **Progressive Deceleration**: Reduces thrust when within 100px of cursor
-- **Automatic Braking**: Applies 95% velocity damping when within 30px of cursor
-- **Engine Visual**: Shows engine flame only when thrust is active
+**Ship Manual Controls** (lines 1470-1500):
+- **Rotation Tracking**: Calculates angle to cursor and rotates smoothly towards it
+- **Smooth Rotation**: Rotates towards cursor with normalized angle difference
+- **Manual Thrust**: Applies thrust only when Space or Backspace is pressed
+- **Variable Damping**: 0.99 damping when thrusting, 0.96 when coasting for faster stops
+- **Engine Visual**: Shows engine flame only when thrust keys are pressed
 
 **General Movement**:
-- Momentum-based with velocity damping (0.99 per frame for ship, 0.95 when braking)
+- Momentum-based with velocity damping (0.99 when thrusting, 0.96 when coasting)
 - Screen boundary clamping for ship (stops at edges)
 - Screen wrapping for asteroids (teleport to opposite edge when off-screen)
 - Delta time correction for frame rate independence (`time.deltaTime`)
@@ -225,11 +249,18 @@ ring.destroy({ children: true, texture: true, baseTexture: true });  // Complete
 ### Resource System
 
 **Resource Flow**:
-1. Asteroids contain resources (`radius × 2`)
+1. **Asteroids** contain resources (`radius × 2`)
 2. Shooting asteroids drops green resource pieces
-3. Pieces are magnetically pulled by ship (80px) or station (100-340px based on level)
-4. Collection grants resources with floating text feedback
-5. Resources purchase upgrades via action list
+3. **Enemy ships** drop resources on destruction (`size × 3`, 3-5 pieces)
+4. **Boss ships** drop **10× resources** (`size × 30`, 15+ pieces)
+5. When boss is defeated, all remaining enemies destroyed and drop resources
+6. **Resource Lifetime**:
+   - 0-30 seconds: Full brightness (alpha 1.0)
+   - 30-60 seconds: Gradually fades out (alpha 1.0 → 0.0)
+   - 60+ seconds: Disappears completely if not collected
+7. Pieces are magnetically pulled by ship (80px) or station (100-340px based on level)
+8. Collection grants resources with floating text feedback
+9. Resources purchase upgrades via action list
 
 **Resource Multipliers**:
 - Ship weapons: 1× (basic) → 1.5× (level 4) → 2× (level 8) → 3× (level 10)
@@ -290,11 +321,30 @@ ring.destroy({ children: true, texture: true, baseTexture: true });  // Complete
 - Independent cooldown system (930-300ms based on gun level)
 
 **Enemy System**:
-- Three size classes: small (fast, low HP), medium (balanced), large (slow, high HP)
-- Dynamic spawning based on defensive strength: `max(3000, 20000 - (shipGunLevel + stationGunLevel) × 850)` ms
-- AI targets ship if within 400px, otherwise targets station
-- Keeps distance at 200px, fires within 350px range
-- Inaccurate shooting with random spread based on size
+- **Swarm Behavior**: Enemies spawn in coordinated groups of 3-7 ships
+- **Formation Types**: V-formation, line formation, or diamond formation (randomly selected)
+- **Group AI States**:
+  - **Approaching**: Move towards player/station area in formation
+  - **Attacking**: Engage for 5-8 seconds while maintaining loose formation
+  - **Retreating**: Pull back to safe distance at increased speed (1.3× normal)
+  - **Regrouping**: Reform at retreat point for 2-3 seconds at reduced speed (0.7× normal)
+- **Individual Behavior**: Each ship maintains formation offset while group moves
+- **Combat Targeting**: Ships rotate to face nearest threat (ship/station) for firing
+- **Fire Discipline**: Only fire during 'attacking' or 'approaching' states
+- **Boss Behavior**:
+  - Bosses operate independently without group coordination
+  - Larger size with distinctive visuals (glowing cores, multiple weapon arrays, name labels)
+  - Use burst-fire patterns (2-5 shots per burst with 3-bullet spreads)
+  - **Adaptive HP**: Scales with player's weapon power (30-50 volleys to defeat)
+    - Calculation: `(gunLevel × 5) × (bullets × 0.7) × (30-50)`
+    - Example: gunLevel 2 = 500 HP, gunLevel 6 = ~4200 HP, gunLevel 10 = ~10000 HP
+    - Minimum 500 HP to ensure challenge
+  - Health bars always visible with color-coded status
+  - Drop **10× resources** on defeat (15+ pieces vs 3+ for regular enemies)
+  - **Upon defeat**: All remaining enemy ships destroyed instantly and drop resources
+  - Victory messages: "[Boss Name] DEFEATED!" and "ALL ENEMIES DESTROYED!"
+- **Dynamic Spawning**: Faster spawn rate with higher defensive strength
+- **Enemy Diversity**: Multiple enemy types per sector with different stats (speed, health, damage)
 
 **Damage System**:
 - Asteroids damage on collision: `radius × 0.5 × defenseMultiplier`
@@ -377,12 +427,13 @@ When adding new graphics that animate or transition:
 - **Asteroid Count**: 20 (constant, line 440)
 - **Ship Pull Radius**: 80px (constant, line 382)
 - **Station Pull Radius**: 100-340px (dynamic, formula at lines 112, 757)
-- **Velocity Damping**: 0.99 for ship (normal), 0.95 when braking near cursor
-- **Ship AI Distances**: 100px slowdown radius, 30px stop radius
+- **Velocity Damping**: 0.99 when thrusting, 0.96 when coasting
 - **Frame Target**: 60 FPS with delta time correction
 - **Transition Duration**: 60 frames (1 second at 60fps, line 733)
 - **Teleport Rings**: 5 rings per effect (line 691)
 - **Spawn Margins**: 100px for asteroids (line 463), 50px for enemies (line 543)
+- **Resource Lifetime**: 3600 frames (60 seconds at 60fps)
+- **Resource Fade Start**: 1800 frames (30 seconds at 60fps)
 
 ### Input System
 
@@ -412,18 +463,35 @@ When adding new graphics that animate or transition:
 
 **Testing Controls**:
 1. Start game and click canvas to lock cursor
-2. Move mouse around - ship should follow cursor smoothly
-3. Hold left mouse button - ship should fire continuously
-4. Move cursor close to ship - ship should slow down and stop near cursor
-5. Press ESC to unlock cursor
-6. Press 1, 2, 3 keys to test upgrade shortcuts (when resources available)
+2. Move mouse around - ship should rotate to face cursor
+3. Hold Space or Backspace - ship should accelerate forward and show engine flames
+4. Release thrust keys - ship should slow down gradually (faster than when thrusting)
+5. Hold left mouse button - ship should fire continuously
+6. Press ESC to unlock cursor
+7. Press 1, 2, 3 keys to test upgrade shortcuts (when resources available)
 
 **Testing Level Progression**:
 1. Start game in Training Zone (Level 0)
-2. Upgrade ship guns to level 2 (should trigger teleportation to Level 1)
-3. Verify teleportation effects: rings appear, ship/station fade out/in, background changes
-4. Check that no ring artifacts remain after transition
-5. Continue through levels 1-3 testing transitions
+2. Upgrade ship guns to level 2 and defeat Protocol Override boss
+3. Verify boss defeat effects:
+   - "[Boss Name] DEFEATED!" message appears
+   - All remaining enemy ships explode instantly
+   - "ALL ENEMIES DESTROYED!" message appears
+   - Large amount of resources (10× normal) drop from boss location
+   - Resources drop from destroyed enemy ships as well
+4. Observe 10-second resource collection phase:
+   - "COLLECTING RESOURCES..." message appears
+   - Pulsing cyan/green circles appear around ship and station
+   - Resources visibly stream towards ship (3× range) and station (2× range)
+   - Countdown timer shows remaining seconds
+5. After 10 seconds, verify teleportation effects: rings appear, ship/station fade out/in, background changes
+6. Check that no ring artifacts remain after transition
+7. Continue through levels 1-2 testing transitions and resource collection phases
+8. On final level (Level 3 - Alien Territory):
+   - Defeat Xenarch Prime boss with all objectives complete
+   - Verify "VICTORY! COLLECTING RESOURCES..." message
+   - After 10-second collection phase, see "GAME COMPLETE! All sectors conquered!" message
+   - Game continues (no transition to non-existent level 4)
 
 **Testing Ship Weapons**:
 1. Start game, lock cursor, collect initial resources by shooting asteroids
@@ -438,11 +506,18 @@ When adding new graphics that animate or transition:
 4. Test resource pull (should see pieces attracted from further away)
 5. Test passive abilities: Defense Grid (level 4), Research Lab (level 6), Production Facility (level 9)
 
-**Testing Enemy System**:
-1. Wait for enemy spawns (faster with higher gun levels)
-2. Verify enemies target ship or station
-3. Check that station guns prioritize enemies over asteroids
-4. Verify enemy bullets damage ship/station
+**Testing Enemy Swarm System**:
+1. Wait for enemy group spawns (3-7 ships in formation)
+2. Observe group formations: V-formation, line, or diamond
+3. Watch swarm behavior cycle:
+   - Approaching: Group moves together towards combat area
+   - Attacking: Ships engage while maintaining loose formation
+   - Retreating: Group pulls back at higher speed
+   - Regrouping: Formation reforms before next approach
+4. Verify ships only fire during attacking/approaching states
+5. Test that killing some ships doesn't break group coordination
+6. Check that bosses operate independently without formations
+7. Verify station guns prioritize enemies over asteroids
 
 **Testing Collisions**:
 1. Let asteroids hit ship (verify damage)
@@ -450,13 +525,20 @@ When adding new graphics that animate or transition:
 3. Test resource collection (ship and station pull)
 4. Let enemy bullets hit ship/station
 
+**Testing Resource Lifetime**:
+1. Shoot asteroids to create resource pieces
+2. Observe resources remain at full brightness for 30 seconds
+3. After 30 seconds, watch resources gradually fade out
+4. At 60 seconds, verify resources disappear completely if not collected
+5. Test that collecting fading resources still works normally
+
 ## Extension Points
 
 The codebase is designed for easy extension:
 - **Save System**: Add localStorage for `gameState` and `resources`
 - **Sound Effects**: Web Audio API integration points at collision/shooting events
 - **More Levels**: Extend `LEVEL_CONFIG`, add victory screen after level 3
-- **Boss Enemies**: Use enemy system template with higher stats
+- **Additional Boss Mechanics**: Special abilities, multi-phase fights, different attack patterns
 - **Power-ups**: Use resource piece template with special effects
 - **Asteroid Variants**: Different colors/sizes with special properties
 - **Multiple Stations**: Array of stations with different specializations
