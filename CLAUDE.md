@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Space Builder is a 2D space survival and base-building game built with vanilla JavaScript and Pixi.js v8.1.0. The entire game logic (~1600 lines) is contained in a single `main.js` file, with a minimal HTML entry point and CSS for UI overlays.
+Space Builder is a 2D space survival and base-building game built with vanilla JavaScript ES6 Modules and Pixi.js v8.1.0. The game uses a **modular architecture** with separated configuration, utilities, and game logic.
 
 The game features a **4-level progression system** where players advance through different space environments (Training Zone → Asteroid Belt → Nebula Field → Alien Territory) by upgrading their ship and station to meet specific requirements.
 
@@ -19,6 +19,7 @@ The game features a **4-level progression system** where players advance through
 **Keyboard Controls**:
 - **Space or Backspace**: Thrust forward (ship accelerates in the direction it's facing)
 - **Release thrust keys**: Ship slows down with increased damping
+- **DELETE or B**: Fire Missile (starts with 5, max 20, regenerates 1 every 5 seconds)
 - **1**: Upgrade Ship Weapons
 - **2**: Upgrade Station Level
 - **3**: Upgrade Station Defense Guns
@@ -44,10 +45,79 @@ Then open `http://localhost:8000` in a browser.
 
 ## Architecture
 
-### File Structure
-- `index.html` - Entry point, loads Pixi.js v8.1.0 CDN and game scripts
-- `main.js` - All game logic (initialization, game loop, entity systems, physics, collision, upgrades)
+### Modular Structure
+
+The game uses **ES6 modules** for better code organization and maintainability. The codebase is organized as follows:
+
+**Root Files**:
+- `index.html` - Entry point, loads Pixi.js v8.1.0 CDN and game scripts (uses `type="module"`)
+- `main.js` - Main game file (imports modules, contains game logic, initialization, game loop)
 - `style.css` - UI overlay styles for HUD (resource counter, health bars, action list, goal progress)
+
+**Module Structure** (`src/` directory):
+```
+src/
+├── config/
+│   ├── levels.js       - Level configuration (LEVEL_CONFIG export)
+│   └── constants.js    - Game constants (NUM_ASTEROIDS, ship/missile configs, names, etc.)
+├── state/
+│   └── gameState.js    - Game state management (not yet integrated)
+└── utils/
+    ├── collision.js    - Collision detection utilities
+    └── helpers.js      - Helper functions (positioning, angles, random, etc.)
+```
+
+**Key Imports in main.js**:
+```javascript
+import { LEVEL_CONFIG } from './src/config/levels.js';
+import * as CONSTANTS from './src/config/constants.js';
+import { checkCollision, getDistance, isOffScreen, clampToScreen } from './src/utils/collision.js';
+import { getOffscreenPosition, normalizeAngle, angleBetween, randomRange, randomInt, randomWeighted } from './src/utils/helpers.js';
+```
+
+### Module Descriptions
+
+#### Configuration Modules (`src/config/`)
+
+**levels.js**:
+- Exports `LEVEL_CONFIG` object with all 4 game levels
+- Each level defines: name, colors, requirements, asteroid properties, enemy types, boss data
+- Centralized level configuration makes it easy to balance game difficulty and add new levels
+
+**constants.js**:
+- Exports all game constants (numbers, formulas, names)
+- Includes: asteroid counts, physics values, upgrade costs, entity properties
+- Exports upgrade name arrays: `SHIP_GUN_NAMES`, `STATION_NAMES`, `STATION_GUN_NAMES`
+
+#### Utility Modules (`src/utils/`)
+
+**collision.js**:
+- `checkCollision(obj1, obj2, radius1, radius2)` - Circle-circle collision detection
+- `getDistance(obj1, obj2)` - Calculate distance between objects
+- `isOffScreen(obj, screen, margin)` - Check if object is off-screen
+- `clampToScreen(obj, screen, margin)` - Clamp object position to screen bounds
+
+**helpers.js**:
+- `getOffscreenPosition(screen, margin)` - Generate random off-screen spawn position
+- `normalizeAngle(angle)` - Normalize angle to [-PI, PI] range
+- `angleBetween(from, to)` - Calculate angle between two points
+- `randomRange(min, max)` - Random number in range
+- `randomInt(min, max)` - Random integer in range
+- `randomWeighted(items)` - Select random item by weight
+
+#### State Module (`src/state/`) - Not Yet Integrated
+
+**gameState.js**:
+- Game state object and management functions
+- Helper functions: `upgradeShipGun()`, `upgradeStation()`, `addResources()`, etc.
+- Currently defined inline in main.js for backward compatibility
+- Future refactoring: integrate this module into main.js
+
+### File Structure
+- `index.html` - Entry point, loads Pixi.js v8.1.0 CDN and game scripts (ES6 module)
+- `main.js` - Main game logic (initialization, game loop, entity systems, physics, collision, upgrades)
+- `style.css` - UI overlay styles for HUD (resource counter, health bars, action list, goal progress)
+- `src/` - Modular game components (config, state, utils)
 
 ### Core Architecture Pattern
 
@@ -313,6 +383,25 @@ ring.destroy({ children: true, texture: true, baseTexture: true });  // Complete
 - Processes all asteroids within splash radius on bullet hit
 - Used in both bullet-asteroid and station bullet-asteroid collision handlers
 
+**Missile System**:
+- **Starting Ammo**: 5 missiles
+- **Max Capacity**: 20 missiles
+- **Regeneration**: 1 missile every 5 seconds (automatic)
+- **Controls**: Press DELETE or B key to fire
+- **Fire Cooldown**: 500ms between missile launches
+- **Range**: 2× the ship's weapon range (scales with gun level)
+- **Damage**: 2-3× current ship weapon damage (randomized)
+- **Proximity Detonation**: Automatically explodes when within 30px of enemies or asteroids
+- **Explosion Radius**: 40-95px (scales with gun level)
+- **Area of Effect**: Damages ALL enemies and asteroids within explosion radius
+- **Resource Bonus**: Missiles provide 2× resources from destroyed asteroids
+- **Visual Effects**:
+  - Orange/red rocket design with fins and nose cone
+  - Multi-layered explosion with 3 rings of particles (white-hot to red-orange)
+  - Expanding shockwave ring effect
+  - "MISSILE!" launch text and "BOOM!" explosion text
+- **UI Display**: Left HUD panel shows "MISSILES: 5 / 20" with regeneration info
+
 **Auto-Targeting AI** (lines 254-330):
 - Prioritizes enemies over asteroids (checks enemies first)
 - Finds nearest target within range (220-400px based on gun level)
@@ -532,14 +621,101 @@ When adding new graphics that animate or transition:
 4. At 60 seconds, verify resources disappear completely if not collected
 5. Test that collecting fading resources still works normally
 
+## Modular Refactoring
+
+### Phase 1 (Completed)
+
+The initial refactoring focused on extracting configuration and utilities into ES6 modules:
+
+**Benefits**:
+- **Reduced Duplication**: Level config and constants defined once, imported where needed
+- **Easier Maintenance**: Changing game balance or adding levels now happens in one place
+- **Better Organization**: Clear separation between config, utilities, and game logic
+- **Foundation for Growth**: Module structure ready for incremental improvements
+
+**What Changed**:
+1. Created `src/config/levels.js` - centralized level configuration
+2. Created `src/config/constants.js` - all game constants
+3. Created `src/utils/collision.js` - collision detection functions
+4. Created `src/utils/helpers.js` - helper utilities
+5. Updated `main.js` to import from modules
+6. Updated `index.html` to use `type="module"`
+
+**Backward Compatibility**:
+- Game logic remains in main.js (3100+ lines)
+- No breaking changes to game behavior
+- All features work identically
+
+### Phase 2 Roadmap (Future Improvements)
+
+Further modularization can be done incrementally:
+
+**Graphics Modules** (`src/graphics/`):
+- `ship.js` - Ship graphics generation
+- `station.js` - Station graphics generation
+- `background.js` - Star field generation
+
+**Entity Modules** (`src/entities/`):
+- `asteroids.js` - Asteroid system
+- `bullets.js` - Bullet system
+- `missiles.js` - Missile system
+- `enemies.js` - Enemy system
+- `resources.js` - Resource pieces
+
+**Effects Modules** (`src/effects/`):
+- `explosions.js` - Explosion system
+- `floatingText.js` - Floating text system
+
+**UI Modules** (`src/ui/`):
+- `hud.js` - HUD updates and rendering
+
+**Input Modules** (`src/input/`):
+- `controls.js` - Input handling
+
+**Core Modules** (`src/core/`):
+- `gameLoop.js` - Main game loop
+- `levelTransition.js` - Level transition system
+
+### Development Workflow
+
+**Adding New Levels**:
+1. Edit `src/config/levels.js`
+2. Add new level object with name, colors, requirements, enemies, boss
+3. No changes needed to main.js
+
+**Modifying Game Constants**:
+1. Edit `src/config/constants.js`
+2. Update relevant constant
+3. Changes automatically apply throughout codebase
+
+**Adding New Utilities**:
+1. Add function to `src/utils/collision.js` or `src/utils/helpers.js`
+2. Export the function
+3. Import in main.js where needed
+
+**Testing Modules**:
+- Modules can be tested independently
+- Import and test collision functions, helpers, etc.
+- Config modules are pure data (easy to validate)
+
+### Module Integration Best Practices
+
+When integrating more modules:
+1. **Start Small**: Extract one system at a time
+2. **Test After Each Change**: Verify game still works
+3. **Maintain Imports**: Update import statements carefully
+4. **Keep Backward Compatibility**: Don't break existing functionality
+5. **Document Changes**: Update CLAUDE.md with new modules
+
 ## Extension Points
 
 The codebase is designed for easy extension:
 - **Save System**: Add localStorage for `gameState` and `resources`
 - **Sound Effects**: Web Audio API integration points at collision/shooting events
-- **More Levels**: Extend `LEVEL_CONFIG`, add victory screen after level 3
+- **More Levels**: Edit `src/config/levels.js` to add new levels
 - **Additional Boss Mechanics**: Special abilities, multi-phase fights, different attack patterns
 - **Power-ups**: Use resource piece template with special effects
 - **Asteroid Variants**: Different colors/sizes with special properties
 - **Multiple Stations**: Array of stations with different specializations
 - **Achievements**: Track stats and unlock rewards
+- **Module Completion**: Continue Phase 2 refactoring to extract remaining systems
