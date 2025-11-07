@@ -28,6 +28,8 @@ async function init() {
     const stationGunProgress = document.getElementById('station-gun-progress');
     const stationGunCost = document.getElementById('station-gun-cost');
     const stationGunBtn = document.getElementById('station-gun-btn');
+    const missileAmmoValue = document.getElementById('missile-ammo-value');
+    const missileAmmoMax = document.getElementById('missile-ammo-max');
 
     // Game State
     let resources = 0;
@@ -51,9 +53,13 @@ async function init() {
             sizeLevel: 1,
             gunLevel: 1, // Start with gun
             health: 100,
-            maxHealth: 100
+            maxHealth: 100,
+            missiles: 5, // Missile ammo
+            maxMissiles: 20 // Max missile capacity
         }
     };
+
+    let lastMissileRegenTime = Date.now(); // Track missile regeneration
 
     // Level configuration
     const LEVEL_CONFIG = {
@@ -814,6 +820,73 @@ async function init() {
     const stationBullets = [];
     let lastShotTime = 0;
 
+    // Missiles
+    const missiles = [];
+    let lastMissileShotTime = 0;
+
+    function fireMissile() {
+        // Check if we have ammo
+        if (gameState.ship.missiles <= 0) return;
+
+        // Fire rate cooldown (prevent spam)
+        const now = Date.now();
+        if (now - lastMissileShotTime < 500) return; // 500ms cooldown between missiles
+        lastMissileShotTime = now;
+
+        // Consume ammo
+        gameState.ship.missiles--;
+        upgradeUIUpdate = true;
+
+        // Missile properties
+        const missileSpeed = 4; // Slower than bullets for tracking
+        const missileSize = 4;
+        const missileRange = (60 + gameState.ship.gunLevel * 10) * 2; // 2x bullet range
+
+        // Create missile visual
+        const missile = new PIXI.Graphics();
+        // Missile body (elongated)
+        missile.rect(-2, -missileSize/2, 8, missileSize).fill(0xff4400);
+        // Missile nose cone
+        missile.moveTo(6, -missileSize/2)
+            .lineTo(8, 0)
+            .lineTo(6, missileSize/2)
+            .closePath()
+            .fill(0xff6600);
+        // Fins
+        missile.moveTo(-2, -missileSize/2)
+            .lineTo(-4, -missileSize)
+            .lineTo(-2, -missileSize)
+            .closePath()
+            .fill(0xcc3300);
+        missile.moveTo(-2, missileSize/2)
+            .lineTo(-4, missileSize)
+            .lineTo(-2, missileSize)
+            .closePath()
+            .fill(0xcc3300);
+
+        // Position at ship
+        missile.x = rocket.x;
+        missile.y = rocket.y;
+        missile.rotation = rocket.rotation;
+
+        // Velocity
+        missile.vx = Math.cos(rocket.rotation) * missileSpeed + rocket.vx;
+        missile.vy = Math.sin(rocket.rotation) * missileSpeed + rocket.vy;
+
+        // Missile properties
+        missile.life = missileRange; // Range in frames
+        missile.damage = gameState.ship.gunLevel * (2.5 + Math.random()); // 2-3x weapon damage
+        missile.r = 5; // Collision radius
+        missile.explosionRadius = 40 + gameState.ship.gunLevel * 5; // Large explosion radius
+        missile.proximityRadius = 30; // Explode when this close to target
+
+        gameContainer.addChild(missile);
+        missiles.push(missile);
+
+        // Visual feedback
+        createFloatingText(rocket.x, rocket.y - 30, 'MISSILE!', 0xff4400, 14);
+    }
+
     function shoot() {
         if (gameState.ship.gunLevel === 0) return;
 
@@ -944,6 +1017,58 @@ async function init() {
         }
 
         explosions.push(...particles);
+    }
+
+    // Missile explosion - larger and more impressive
+    function createMissileExplosion(x, y, radius) {
+        const numParticles = 30 + Math.floor(radius / 3); // Many more particles
+        const particles = [];
+
+        // Multiple rings of particles for layered effect
+        for (let ring = 0; ring < 3; ring++) {
+            const ringParticles = Math.floor(numParticles / 3);
+            const ringDelay = ring * 3; // Stagger the rings
+            const ringSpeed = 3 + ring * 1.5;
+
+            for (let i = 0; i < ringParticles; i++) {
+                const angle = (Math.PI * 2 * i) / ringParticles + (Math.random() - 0.5) * 0.3;
+                const speed = ringSpeed + Math.random() * 2;
+                const particleSize = 3 + Math.random() * 4;
+
+                const particle = new PIXI.Graphics();
+                // Color gradient from white-hot to red-orange
+                const colors = [0xffffff, 0xffff00, 0xff8800, 0xff4400, 0xff0000];
+                const colorIndex = Math.floor(Math.random() * colors.length);
+                particle.circle(0, 0, particleSize).fill(colors[colorIndex]);
+
+                particle.x = x;
+                particle.y = y;
+                particle.vx = Math.cos(angle) * speed;
+                particle.vy = Math.sin(angle) * speed;
+                particle.life = 40 + Math.random() * 40 - ringDelay; // 40-80 frames, staggered
+                particle.maxLife = particle.life;
+
+                gameContainer.addChild(particle);
+                particles.push(particle);
+            }
+        }
+
+        // Add a shockwave ring effect
+        const shockwave = new PIXI.Graphics();
+        shockwave.circle(0, 0, 5).stroke({ width: 3, color: 0xff8800, alpha: 0.8 });
+        shockwave.x = x;
+        shockwave.y = y;
+        shockwave.life = 30;
+        shockwave.maxLife = 30;
+        shockwave.maxScale = radius / 5; // Scale based on explosion radius
+
+        gameContainer.addChild(shockwave);
+        particles.push(shockwave);
+
+        explosions.push(...particles);
+
+        // Visual feedback text
+        createFloatingText(x, y, 'BOOM!', 0xff4400, 24);
     }
 
     // Asteroids
@@ -1734,6 +1859,11 @@ async function init() {
             document.exitPointerLock();
         }
 
+        // Missile firing with DELETE or B key
+        if (e.code === 'Delete' || e.code === 'KeyB') {
+            fireMissile();
+        }
+
         // Keyboard shortcuts for upgrades
         if (e.code === 'Digit1' || e.code === 'Numpad1') {
             shipUpgradeBtn.click();
@@ -1850,6 +1980,14 @@ async function init() {
                 createFloatingText(station.x, station.y + 40, `+${production}`);
                 lastProductionTime = now;
             }
+        }
+
+        // Missile ammo regeneration (1 missile every 5 seconds)
+        const missileRegenTime = Date.now();
+        if (missileRegenTime - lastMissileRegenTime > 5000 && gameState.ship.missiles < gameState.ship.maxMissiles) {
+            gameState.ship.missiles++;
+            upgradeUIUpdate = true;
+            lastMissileRegenTime = missileRegenTime;
         }
 
         // Station guns - auto-target and shoot (prioritize enemies over asteroids)
@@ -2079,6 +2217,126 @@ async function init() {
                     while (asteroids.length < numAsteroids) createAsteroid({ offscreen: true });
                     break;
                 }
+            }
+        }
+
+        // Update missiles
+        for (let i = missiles.length - 1; i >= 0; i--) {
+            const m = missiles[i];
+            m.x += m.vx * time.deltaTime;
+            m.y += m.vy * time.deltaTime;
+            m.life -= time.deltaTime;
+
+            // Remove if off-screen or lifetime expired
+            if (m.life <= 0 || m.x < -100 || m.x > app.screen.width + 100 || m.y < -100 || m.y > app.screen.height + 100) {
+                gameContainer.removeChild(m);
+                missiles.splice(i, 1);
+                continue;
+            }
+
+            // Check proximity to enemies
+            let shouldExplode = false;
+            let explodeX = m.x;
+            let explodeY = m.y;
+
+            for (let j = 0; j < enemies.length; j++) {
+                const e = enemies[j];
+                const dx = m.x - e.x;
+                const dy = m.y - e.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+
+                if (dist < m.proximityRadius) {
+                    shouldExplode = true;
+                    explodeX = m.x;
+                    explodeY = m.y;
+                    break;
+                }
+            }
+
+            // Check proximity to asteroids if no enemy found
+            if (!shouldExplode) {
+                for (let j = 0; j < asteroids.length; j++) {
+                    const a = asteroids[j];
+                    const dx = m.x - a.x;
+                    const dy = m.y - a.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+
+                    if (dist < m.proximityRadius) {
+                        shouldExplode = true;
+                        explodeX = m.x;
+                        explodeY = m.y;
+                        break;
+                    }
+                }
+            }
+
+            if (shouldExplode) {
+                // Create large explosion
+                createMissileExplosion(explodeX, explodeY, m.explosionRadius);
+
+                // Apply damage to all enemies in explosion radius
+                for (let j = enemies.length - 1; j >= 0; j--) {
+                    const e = enemies[j];
+                    if (!e) continue; // Skip if enemy was removed
+
+                    const dx = explodeX - e.x;
+                    const dy = explodeY - e.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+
+                    if (dist < m.explosionRadius) {
+                        e.health -= m.damage;
+                        updateEnemyHealthBar(e);
+
+                        if (e.health <= 0) {
+                            // Boss defeated?
+                            if (e.isBoss) {
+                                handleBossDefeat(e);
+                                // handleBossDefeat removes all enemies, so break out of loop
+                                break;
+                            } else {
+                                // Drop resources from enemy
+                                const numPieces = Math.floor(Math.random() * 3) + 3;
+                                const totalResources = e.size * 3;
+                                for (let k = 0; k < numPieces; k++) {
+                                    createResourcePiece(e.x, e.y, Math.floor(totalResources / numPieces));
+                                }
+                                createExplosion(e.x, e.y, e.size);
+                            }
+
+                            gameContainer.removeChild(e);
+                            enemies.splice(j, 1);
+                        }
+                    }
+                }
+
+                // Apply damage to all asteroids in explosion radius
+                for (let j = asteroids.length - 1; j >= 0; j--) {
+                    const a = asteroids[j];
+                    if (!a) continue; // Skip if asteroid was removed
+
+                    const dx = explodeX - a.x;
+                    const dy = explodeY - a.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+
+                    if (dist < m.explosionRadius) {
+                        // Missiles always destroy asteroids completely
+                        const resourceBonus = 2.0; // Missiles give 2x resources
+                        const numPieces = Math.floor((a.resources * resourceBonus) / 3) + 1;
+                        for (let k = 0; k < numPieces; k++) {
+                            createResourcePiece(a.x, a.y, Math.floor((a.resources * resourceBonus) / numPieces));
+                        }
+
+                        gameContainer.removeChild(a);
+                        asteroids.splice(j, 1);
+                    }
+                }
+
+                // Keep total asteroids constant
+                while (asteroids.length < numAsteroids) createAsteroid({ offscreen: true });
+
+                // Remove missile
+                gameContainer.removeChild(m);
+                missiles.splice(i, 1);
             }
         }
 
@@ -2603,6 +2861,12 @@ async function init() {
             particle.vx *= 0.95;
             particle.vy *= 0.95;
 
+            // Scale shockwave rings (for missile explosions)
+            if (particle.maxScale) {
+                const progress = 1 - (particle.life / particle.maxLife);
+                particle.scale.set(1 + progress * particle.maxScale);
+            }
+
             if (particle.life <= 0) {
                 gameContainer.removeChild(particle);
                 explosions.splice(i, 1);
@@ -2655,6 +2919,7 @@ async function init() {
             updateGoalProgress();
             updateShipWeaponUI();
             updateStationUpgradeUI();
+            updateMissileUI();
             lastResources = resources;
             upgradeUIUpdate = false;
         }
@@ -2856,6 +3121,11 @@ async function init() {
                 shipUpgradeBtn.style.display = 'none';
             }
         }
+    }
+
+    function updateMissileUI() {
+        missileAmmoValue.textContent = gameState.ship.missiles;
+        missileAmmoMax.textContent = gameState.ship.maxMissiles;
     }
 
     function updateStationUpgradeUI() {
