@@ -69,6 +69,8 @@ export class Background {
       { y: -520, f: 0.93, n: 2600, sx: 900, z0: -1500, z1: 500, s0: 1.2, s1: 2.8, bright: 0.9 },
       { y: -230, f: 0.78, n: 1400, sx: 520, z0: -800, z1: 300, s0: 1.6, s1: 3.4, bright: 1.1 },
       { y: -80, f: 0.4, n: 420, sx: 260, z0: -360, z1: 200, s0: 1.4, s1: 2.4, bright: 0.45 },
+      // space dust just under the play plane, fixed in the world: it streams past as you fly
+      { y: -9, f: 0, n: 1100, sx: 125, z0: -150, z1: 125, s0: 1.0, s1: 1.8, bright: 0.28 },
     ];
     const rng = new Rng(1234);
     for (const sp of specs) {
@@ -79,7 +81,7 @@ export class Background {
       const col = new Float32Array(sp.n * 3);
       for (let i = 0; i < sp.n; i++) {
         pos[i * 3] = rng.range(-sp.sx, sp.sx);
-        pos[i * 3 + 1] = sp.y + rng.range(-30, 30);
+        pos[i * 3 + 1] = sp.y + rng.range(-1, 1) * Math.min(30, Math.abs(sp.y) * 0.5);
         pos[i * 3 + 2] = rng.range(sp.z0, sp.z1);
         const big = rng.chance(0.06);
         size[i] = big ? sp.s1 * 1.6 : rng.range(sp.s0, sp.s1);

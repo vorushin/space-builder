@@ -1029,7 +1029,7 @@ export class UI {
       if (game.station.alive) place(0, 0, 'station', 'Station');
       if (game.p2) for (const s of game.ships) if (s.alive) place(s.x, s.z, 'station', s.id === 0 ? 'P1' : 'P2');
       const b = game.events.beacon();
-      if (b) place(b.x, b.z, 'gold', game.events.pod ? 'SOS' : 'Comet');
+      if (b) place(b.x, b.z, 'gold', game.events.beaconLabel());
       for (const c of game.pickups.crates) place(c.x, c.z, 'gold', 'Supplies');
       if (game.boss?.alive) place(game.boss.x, game.boss.z, 'boss', game.boss.def.name);
       const s = game.ship;

@@ -1278,7 +1278,7 @@ export class Game {
     let kind: EventKind | null = null;
     // Sparky's SOS comes before wave 3 of every sector until he is rescued
     if (d.wave === 2 && !this.sparky && !this.events.pod) kind = 'sos';
-    else if (d.wave >= 1 && this.rng.chance(0.75)) kind = this.events.pickRandom();
+    else if (d.wave >= 1 && this.rng.chance(0.75)) kind = this.events.pickRandom(this.sector);
     if (kind) this.events.start(kind, this);
   }
 
