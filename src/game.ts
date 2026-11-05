@@ -179,6 +179,7 @@ export class Game {
 
   private applySector(index: number): void {
     this.sector = index;
+    this.audio.setSector(index);
     this.def = SECTORS[index];
     this.look = this.def.look;
     this.stage.setLook(this.look);
@@ -233,6 +234,7 @@ export class Game {
       return;
     }
     this.sayAll(LINES.sectorBriefing[this.sector] ?? []);
+    if (this.coop && this.sector === 0) this.sayAll(LINES.coopStart);
     const unlocks = [
       ...MODULES.filter((m) => m.unlockSector === this.sector && this.sector > 0).map((m) => m.title),
       ...EXPANSIONS.filter((e) => e.unlockSector === this.sector && e.ring > 0).map((e) => e.name),

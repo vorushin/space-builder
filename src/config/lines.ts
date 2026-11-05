@@ -48,6 +48,7 @@ export const LINES = {
     [aria('Alien Territory. This is it, {cmd}: the alien mothership is somewhere out there.')],
   ],
   victory: [aria('The galaxy is safe. Best commander ever, {cmd}!')],
+  coopStart: [aria('Two pilots today! Player 2 flies with the arrow keys or a game controller, and shoots by itself.')],
   endless: [aria('Endless mode! Waves forever. How long can we hold out, {cmd}?')],
   bossArrive: {
     override: [{ who: 'override', text: 'PROTOCOL OVERRIDE ONLINE. TRAINING... TERMINATED.' }],

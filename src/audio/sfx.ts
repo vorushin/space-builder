@@ -324,6 +324,12 @@ export class Audio {
     this.wantMode = mode;
   }
 
+  /** Each sector plays in its own key. */
+  private transpose = 0;
+  setSector(sector: number): void {
+    this.transpose = [0, 2, -3, 5][sector] ?? 0;
+  }
+
   private schedule(): void {
     const c = this.ctx;
     if (!c || c.state !== 'running') return;
@@ -353,7 +359,7 @@ export class Audio {
     const prog = minor ? [[50, 53, 57], [46, 50, 53], [48, 52, 55], [45, 49, 52]]
       : this.mode === 'victory' ? [[48, 52, 55], [43, 47, 50], [45, 48, 52], [41, 45, 48]]
       : [[45, 48, 52], [41, 45, 48], [48, 52, 55], [43, 47, 50]];
-    const chord = prog[bar];
+    const chord = prog[bar].map((n) => n + this.transpose);
     const calm = this.mode === 'calm' || this.mode === 'title';
     // pad on bar start
     if (s === 0) for (const n of chord) this.voice(midi(n + 12), sd * 16, calm ? 'triangle' : 'sawtooth', calm ? 0.05 : 0.025, t, 0.4, 1200);
