@@ -6,7 +6,7 @@ import { socketsFor, type Socket } from '../logic/layout';
 import { turnToward } from '../logic/math';
 import type { SavedModule } from '../logic/save';
 import { leadAim } from '../logic/targeting';
-import { makeModule, makeRing, makeSocketPad, makeStationCore, type ModuleRig, type PadRig, type StationRig } from '../render/models';
+import { makeMiningDrone, makeModule, makeRing, makeSocketPad, makeStationCore, type ModuleRig, type PadRig, type StationRig } from '../render/models';
 import { hexTexture } from '../render/textures';
 import type { Bolt } from './projectiles';
 import type { Hittable } from './types';
@@ -24,21 +24,26 @@ export interface ModuleInst {
 }
 
 const SHIELD_VS = `
-varying vec3 vN; varying vec3 vV; varying vec2 vUv;
+varying vec3 vN; varying vec3 vV; varying vec2 vUv; varying vec3 vW;
 void main(){
   vUv = uv;
   vec4 wp = modelMatrix * vec4(position, 1.0);
+  vW = wp.xyz;
   vN = normalize(mat3(modelMatrix) * normal);
   vV = normalize(cameraPosition - wp.xyz);
   gl_Position = projectionMatrix * viewMatrix * wp;
 }`;
 const SHIELD_FS = `
 uniform vec3 uColor; uniform float uHit; uniform float uTime; uniform float uLevel; uniform sampler2D uHex;
-varying vec3 vN; varying vec3 vV; varying vec2 vUv;
+uniform vec3 uRipplePos; uniform float uRippleAge;
+varying vec3 vN; varying vec3 vV; varying vec2 vUv; varying vec3 vW;
 void main(){
   float f = pow(1.0 - abs(dot(vN, vV)), 2.2);
   float hex = texture2D(uHex, vUv * vec2(5.0, 2.5) + vec2(uTime * 0.01, 0.0)).a;
-  float a = (f * 0.32 + hex * 0.045 * (0.4 + f)) * (0.35 + 0.65 * uLevel) + uHit * (0.12 + hex * 0.5);
+  // a ring of light spreading out from the last impact
+  float d = distance(vW, uRipplePos);
+  float ring = exp(-pow((d - uRippleAge * 14.0) * 0.9, 2.0)) * exp(-uRippleAge * 2.5);
+  float a = (f * 0.32 + hex * 0.045 * (0.4 + f)) * (0.35 + 0.65 * uLevel) + uHit * 0.06 + ring * (0.35 + hex * 0.9);
   gl_FragColor = vec4(uColor * a * 1.6, a);
 }`;
 
@@ -66,6 +71,8 @@ export class Station {
   private buildOn = false;
   private time = 0;
   private cands: Hittable[] = [];
+  /** little drones that fly in to weld a new module together */
+  private builders: { mesh: THREE.Group; m: ModuleInst; a: number; leave: number }[] = [];
 
   constructor(private scene: THREE.Scene) {
     this.rig = makeStationCore();
@@ -77,6 +84,8 @@ export class Station {
       uniforms: {
         uColor: { value: new THREE.Color(0x6fb7ff) },
         uHit: { value: 0 },
+        uRipplePos: { value: new THREE.Vector3(0, -999, 0) },
+        uRippleAge: { value: 99 },
         uTime: { value: 0 },
         uLevel: { value: 1 },
         uHex: { value: hexTexture() },
@@ -147,6 +156,7 @@ export class Station {
     this.group.add(m.rig.root);
     this.modules.set(socketId, m);
     this.recompute(true);
+    this.addBuilders(m);
     return m;
   }
 
@@ -160,6 +170,7 @@ export class Station {
     m.build = 0.3;
     this.group.add(m.rig.root);
     this.recompute(true);
+    this.addBuilders(m);
     return m;
   }
 
@@ -170,6 +181,45 @@ export class Station {
     this.modules.delete(socketId);
     this.recompute(false);
     return m;
+  }
+
+  private loading = false;
+
+  private addBuilders(m: ModuleInst): void {
+    if (this.loading) return;
+    for (let i = 0; i < 2; i++) {
+      const mesh = makeMiningDrone();
+      mesh.scale.setScalar(0.65);
+      mesh.position.set(m.x, 3, m.z);
+      this.scene.add(mesh);
+      this.builders.push({ mesh, m, a: i * Math.PI, leave: 0 });
+    }
+  }
+
+  private updateBuilders(dt: number, game: Game): void {
+    for (const b of this.builders) {
+      const m = b.m;
+      b.a += dt * 5;
+      if (m.build < 1 && this.modules.get(m.socket.id) === m) {
+        const r = 1.5;
+        b.mesh.position.set(m.x + Math.cos(b.a) * r, 1.3 + Math.sin(b.a * 2) * 0.3, m.z + Math.sin(b.a) * r);
+        b.mesh.rotation.y = -b.a - Math.PI / 2;
+        // welding sparks
+        if (Math.random() < 0.5) game.fx.particle(m.x + Math.cos(b.a) * 0.8, 0.9, m.z + Math.sin(b.a) * 0.8, (Math.random() - 0.5) * 4, 2, (Math.random() - 0.5) * 4, 0xbfeaff, 0.35, 0.25, 2.6, 2);
+      } else {
+        // job done: zip away and vanish
+        b.leave += dt;
+        b.mesh.position.y += dt * 9;
+        b.mesh.position.x += Math.cos(b.a) * dt * 6;
+        b.mesh.position.z += Math.sin(b.a) * dt * 6;
+        b.mesh.scale.setScalar(Math.max(0.05, 0.65 * (1 - b.leave / 0.7)));
+      }
+    }
+    this.builders = this.builders.filter((b) => {
+      if (b.leave < 0.7) return true;
+      this.scene.remove(b.mesh);
+      return false;
+    });
   }
 
   tierStats(m: ModuleInst): ModuleTier {
@@ -236,6 +286,11 @@ export class Station {
     if (this.shield > 0) {
       this.shield -= dmg;
       this.hitGlow = Math.min(1, this.hitGlow + 0.5);
+      // ripple from where the shot hit the bubble
+      const r = this.shieldRadius;
+      const d = Math.hypot(x - this.x, z - this.z) || 1;
+      this.bubbleMat.uniforms.uRipplePos.value.set(this.x + ((x - this.x) / d) * r, 0.6, this.z + ((z - this.z) / d) * r);
+      this.bubbleMat.uniforms.uRippleAge.value = 0;
       game.fx.sparks(x, z, 0x8fc8ff, 5, 6, 0.45, 0.8);
       if (this.shield <= 0) {
         this.shield = 0;
@@ -259,6 +314,7 @@ export class Station {
     this.time += dt;
     this.lastHit += dt;
     this.rig.spinner.rotation.y += dt * 0.35;
+    this.updateBuilders(dt, game);
     const blink = Math.sin(this.time * 4) > 0.6;
     (this.rig.beacon.material as THREE.MeshBasicMaterial).color.setRGB(blink ? 4 : 0.6, blink ? 0.4 : 0.05, blink ? 0.4 : 0.05);
     for (const r of this.ringMeshes) {
@@ -280,6 +336,7 @@ export class Station {
     this.bubble.scale.setScalar(this.shieldRadius);
     this.bubble.scale.y = this.shieldRadius * 0.45;
     this.bubbleMat.uniforms.uHit.value = this.hitGlow;
+    this.bubbleMat.uniforms.uRippleAge.value += dt;
     this.bubbleMat.uniforms.uTime.value = this.time;
     this.bubbleMat.uniforms.uLevel.value = this.shieldMax > 0 ? this.shield / this.shieldMax : 0;
     // pads glow in build mode
@@ -422,6 +479,9 @@ export class Station {
 
   /** Rebuild from a checkpoint. */
   load(rings: number, modules: SavedModule[]): void {
+    this.loading = true;
+    for (const b of this.builders) this.scene.remove(b.mesh);
+    this.builders = [];
     for (const id of [...this.modules.keys()]) this.remove(id);
     for (const r of this.ringMeshes) this.group.remove(r);
     this.ringMeshes = [];
@@ -450,6 +510,7 @@ export class Station {
     this.setVisible(true);
     this.recompute(false);
     this.repairFull();
+    this.loading = false;
   }
 
   /** World position of a socket (for UI popups). */
