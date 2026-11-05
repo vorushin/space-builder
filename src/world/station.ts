@@ -38,7 +38,7 @@ varying vec3 vN; varying vec3 vV; varying vec2 vUv;
 void main(){
   float f = pow(1.0 - abs(dot(vN, vV)), 2.2);
   float hex = texture2D(uHex, vUv * vec2(5.0, 2.5) + vec2(uTime * 0.01, 0.0)).a;
-  float a = (f * 0.55 + hex * 0.10 * (0.5 + f)) * (0.35 + 0.65 * uLevel) + uHit * (0.18 + hex * 0.6);
+  float a = (f * 0.32 + hex * 0.045 * (0.4 + f)) * (0.35 + 0.65 * uLevel) + uHit * (0.12 + hex * 0.5);
   gl_FragColor = vec4(uColor * a * 1.6, a);
 }`;
 
@@ -298,7 +298,8 @@ export class Station {
         m.rig.root.scale.setScalar(0.2 + 0.8 * (1 - (1 - b) ** 3));
         if (Math.random() < 0.6) game.fx.sparks(m.x, m.z, 0xffe08a, 2, 6, 0.4, 1);
       }
-      if (!this.alive) continue;
+      // the title screen only shows the station off: no shooting (bolts don't update there)
+      if (!this.alive || game.mode === 'title') continue;
       this.runModule(m, dt, game);
     }
   }

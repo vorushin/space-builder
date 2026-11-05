@@ -77,7 +77,7 @@ src/
   ui/                ui.ts (HUD, build cards, popups, banners, hints, indicators,
                      screens, touch) + style.css
   audio/sfx.ts       procedural SFX + tiny music sequencer (calm/battle/boss)
-  dev/bot.ts         autopilot for balance runs (?dev&bot&speed=N)
+  dev/bot.ts         autopilot for balance runs (?dev&bot&speed=N; ?dev&bot=weak plays sloppier)
 public/classic/      the original 2D game, untouched
 ```
 
@@ -91,7 +91,11 @@ public/classic/      the original 2D game, untouched
   `Station.runModule`. The build bar picks it up automatically.
 - **Balance:** most numbers live in `config/`. Crystal value per sector is
   `SECTOR_VALUE`. Station weapons scale with the sector inside `Station.runModule`. Run
-  `?dev&bot&speed=8` and read `window.__bot.log` to see the pacing.
+  `?dev&bot&speed=8` and read `window.__bot.log` to see the pacing. Chrome throttles
+  animation frames in background windows, so for long runs step the game directly from
+  the console: `for (…) { __bot.tick(__game, 1/60); __game.update(1/60); }`. Last
+  tuning (Nov 2026): the autopilot wins in about 23 min, the station dips to about 70–80%
+  in the hardest waves, and boss fights last 20–70 s.
 - **New calm-phase event:** add it in `world/events.ts` (`EventKind`, `EVENT_TEXT`,
   `start`, `update`).
 

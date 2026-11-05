@@ -983,7 +983,7 @@ export class Game {
       st.follow(0, 4, realDt);
       return;
     }
-    st.distGoal = this.boss?.alive ? BAL.camera.bossDist : BAL.camera.dist;
+    st.distGoal = (this.boss?.alive ? BAL.camera.bossDist : BAL.camera.dist) + (this.station.rings - 1) * 4;
     st.distGoal *= 1 + this.zoom * 0.12;
     if (s.alive) {
       const ax = Math.max(-12, Math.min(12, (this.aim.x - s.x) * BAL.camera.lookAhead));

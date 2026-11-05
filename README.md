@@ -45,3 +45,11 @@ brings the boss, and **=** toggles god mode. `?dev&bot&speed=6` lets an autopilo
 at 6× speed, which is handy for balancing.
 
 See [CLAUDE.md](CLAUDE.md) for how the code is organised and where to change things.
+
+## Ideas to build next (together)
+
+- A new enemy for any sector: pick a name, colour and role in `src/config/sectors.ts`
+- A 7th station module, like a repair drone bay, a tractor beam or a decoy beacon
+- Ship colours and skins chosen on the title screen
+- A 5th sector with its own planet and boss
+- Two-player mode on one keyboard

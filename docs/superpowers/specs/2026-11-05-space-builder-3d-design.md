@@ -209,8 +209,10 @@ drums), and a boss variant. M mutes.
   target is 60 fps on a MacBook.
 - **Saves:** a sector checkpoint in localStorage (sector, crystals, gun tier,
   station layout, Sparky).
-- **Dev mode** (`?dev`): F1 +500 crystals, F2 clear wave, F3 god mode, F4 boss,
-  F5 next sector, plus FPS. `window.__game` is exposed for browser tests.
+- **Dev mode** (`?dev`): 8 +crystals, 9 clear wave, 0 next sector, - boss, = god
+  mode, plus an FPS and state overlay. (F-keys collide with browser shortcuts.)
+  `?dev&bot[=weak]&speed=N` runs an autopilot for balance. `window.__game` is
+  exposed for browser tests.
 - **Classic:** the old Pixi game moves to `public/classic/` and is served at
   `/classic/`.
 
