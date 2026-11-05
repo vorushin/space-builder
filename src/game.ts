@@ -835,7 +835,8 @@ export class Game {
 
     // global keys
     if (this.mode === 'play' && !this.controlsLocked) {
-      if (input.pressed('KeyP') || (input.pressed('Escape') && !this.buildMode)) {
+      // (check build mode first: pressed() consumes the key, and Esc in build mode means "back")
+      if (input.pressed('KeyP') || (!this.buildMode && input.pressed('Escape'))) {
         this.setPaused(!this.paused);
       }
     }
