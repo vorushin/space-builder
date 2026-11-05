@@ -161,7 +161,7 @@ export class UI {
       if (game.mode === 'play' && !game.paused && !game.dev) game.setPaused(true);
     });
     if (isTouch) this.buildTouch(game);
-    game.pads.onChange = (n) => this.toast(n > 0 ? `🎮 Game controller connected (${n})` : 'Game controller unplugged', 'info');
+    game.pads.onChange = (n, delta) => this.toast(delta > 0 ? `🎮 Game controller connected${n > 1 ? ` (${n})` : ''}` : 'Game controller unplugged', 'info');
   }
 
   // ================================================================ HUD construction
@@ -487,11 +487,36 @@ export class UI {
     scr.classList.add('show');
   }
 
+  private medalQ: MedalDef[] = [];
+  private medalShowing = false;
+
+  /** Medal popups queue up (two at once would sit on top of each other). */
   medalToast(m: MedalDef): void {
+    this.medalQ.push(m);
+    if (!this.medalShowing) this.nextMedal();
+  }
+
+  private nextMedal(): void {
+    const m = this.medalQ.shift();
+    if (!m) {
+      this.medalShowing = false;
+      return;
+    }
+    this.medalShowing = true;
     const t = h('div', 'medal-toast', `<div class="mi">${m.icon}</div><div><div class="mt">Medal earned!</div><div class="mn"></div></div>`);
     t.querySelector('.mn')!.textContent = m.name;
     this.root.append(t);
-    setTimeout(() => t.remove(), 3500);
+    setTimeout(() => {
+      t.remove();
+      this.nextMedal();
+    }, 3500);
+  }
+
+  /** A controller's A button presses the main button of whatever menu is open. */
+  pressPrimary(): void {
+    const scr = Object.values(this.screens).find((s) => s.classList.contains('show'));
+    const b = scr?.querySelector<HTMLElement>('.btn.primary') ?? scr?.querySelector<HTMLElement>('[data-a=back]');
+    b?.click();
   }
 
   /** Boss entrance: letterbox bars + name card. */

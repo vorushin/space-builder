@@ -36,6 +36,7 @@ export const LINES = {
   sparkyCheer: [sparky('Beep boop! That was fun!'), sparky('Zap zap! We did it!'), sparky('Shiny crystals! Beep!')],
   stationDanger: [aria('{cmd}, the station is taking a beating! Come back and help!'), aria('Hull breach! Defend the station!')],
   shipDown: [aria('Your ship is down! I am building you a new one at the station.')],
+  p2Down: [aria('Player 2 is down! A new ship is on the way.')],
   bossWarning: [aria('Something BIG is coming, {cmd}...')],
   novaReady: [aria('NOVA is charged! Press F to unleash it!')],
   bossDefeated: [aria('{boss} is down! You did it, {cmd}!')],

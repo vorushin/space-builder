@@ -74,6 +74,10 @@ export class Game {
   p2: Ship | null = null;
   coop = false;
   readonly pads = new Gamepads();
+  /** which player each connected controller belongs to (by Gamepad API index) */
+  private padOwner = new Map<number, 0 | 1>();
+  /** when player 1 last touched their controller (vs. the mouse) */
+  private padP1At = 0;
   readonly station: Station;
   readonly asteroids: AsteroidField;
   readonly crystals: Crystals;
@@ -279,6 +283,17 @@ export class Game {
     this.saveCheckpoint();
     this.ui.enterPlay(this);
     this.audio.music(this.endless ? 'battle' : 'calm');
+    this.checkStateMedals();
+  }
+
+  /** Medals for things you already have (e.g. continuing a save from before medals existed). */
+  private checkStateMedals(): void {
+    if (this.station.modules.size > 0) this.medal('first_build');
+    if (this.ship.gunTier >= 4) this.medal('sharp_shooter');
+    if (this.ship.gunTier >= MAX_GUN_TIER) this.medal('singularity');
+    if (this.station.rings >= 3) this.medal('mega');
+    if (this.station.modules.size >= 18) this.medal('full_house');
+    if (this.sparky) this.medal('sparky');
   }
 
   retrySector(): void {
@@ -378,7 +393,8 @@ export class Game {
     this.profile.paint = id;
     this.saveProfile();
     this.applyPaint();
-    this.fx.sparks(this.ship.x, this.ship.z, PAINT_BY_ID[id].accent, 14, 6);
+    const at = this.ship.rig.root.position;
+    this.fx.sparks(at.x, at.z, PAINT_BY_ID[id].accent, 14, 6);
     this.audio.play('click');
   }
 
@@ -411,6 +427,7 @@ export class Game {
 
   /** Turn co-op on or off (player 2's ship appears next to player 1's). */
   setCoop(on: boolean): void {
+    if (this.coop !== on) this.padOwner.clear();
     this.coop = on;
     if (on && !this.p2) {
       this.p2 = new Ship(this.stage.scene, 1);
@@ -658,8 +675,11 @@ export class Game {
   // ================================================================ NOVA super
 
   /** Charge the NOVA meter (kills, boss damage). */
+  /** set while the NOVA wave deals damage, so it can't recharge itself */
+  private novaBlock = false;
+
   addNova(amount: number): void {
-    if (this.mode !== 'play' || amount <= 0) return;
+    if (this.mode !== 'play' || amount <= 0 || this.novaBlock) return;
     this.nova = Math.min(1, this.nova + amount);
     if (this.nova >= 1 && !this.novaAnnounced) {
       this.novaAnnounced = true;
@@ -701,11 +721,14 @@ export class Game {
       if (Math.hypot(t.x - w.x, t.z - w.z) - t.r > w.r) continue;
       w.hit.add(t);
       let dmg: number;
+      // bosses lose at most 5% per NOVA, split across Xenarch's 4 pods
       if (t instanceof Boss) dmg = t.maxHp * 0.05;
-      else if (t instanceof BossPod) dmg = t.boss.maxHp * 0.05;
+      else if (t instanceof BossPod) dmg = (t.boss.maxHp * 0.05) / 4;
       else if (t.team === 'enemy') dmg = 450 * (1 + this.sector * 1.6);
       else dmg = 120 * this.def.rockHp;
+      this.novaBlock = true;
       t.onHit(dmg, this, w.x, w.z);
+      this.novaBlock = false;
       this.fx.sparks(t.x, t.z, 0xe9d5ff, 6, 8, 0.5);
     }
     // the wave front wipes out enemy bullets
@@ -736,7 +759,7 @@ export class Game {
     if (c.t < CINE_TIME) return;
     this.cine = null;
     this.ui.cinematic(false);
-    if (this.mode === 'play') {
+    if (this.mode === 'play' && this.station.alive) {
       this.controlsLocked = false;
       this.ceaseFire = false;
     }
@@ -1128,6 +1151,8 @@ export class Game {
     const input = this.input;
     if (input.pressed('KeyM')) this.audio.toggleMute();
     if (this.mode === 'title') {
+      this.pads.poll();
+      if (this.pads.list.some((p) => p.confirm)) this.ui.pressPrimary();
       this.titleT += realDt;
       this.stage.distGoal = 30;
       this.stage.follow(Math.sin(this.titleT * 0.1) * 4, 6 + Math.cos(this.titleT * 0.13) * 2, realDt);
@@ -1153,7 +1178,7 @@ export class Game {
     }
     if (this.paused) {
       this.pads.poll();
-      if (this.pads.pads.some((p) => p.pause)) this.setPaused(false);
+      if (this.pads.list.some((p) => p.pause || p.confirm)) this.setPaused(false);
       this.ui.update(this, 0);
       this.stage.update(0);
       input.endFrame();
@@ -1339,11 +1364,7 @@ export class Game {
    */
   private buildCommands(): void {
     const input = this.input;
-    const pads = this.pads;
-    pads.poll();
-    const live = pads.pads.filter((p) => p.connected);
-    const padP1: PadState | null = this.coop ? (live.length >= 2 ? live[0] : null) : (live[0] ?? null);
-    const padP2: PadState | null = this.coop ? (live.length >= 2 ? live[1] : live[0] ?? null) : null;
+    const { padP1, padP2 } = this.assignPads();
     const len = (v: { x: number; z: number }) => Math.hypot(v.x, v.z);
 
     // ---- player 1
@@ -1358,8 +1379,14 @@ export class Game {
     }
     c1.move = { x: mx, z: mz };
     this.autoFire = false;
+    if (padP1?.any) this.padP1At = performance.now();
+    const padMode = !!padP1 && this.padP1At > input.mouseMovedAt;
     if (padP1 && len(padP1.look) > 0.35) {
       c1.aim = { x: s1.x + padP1.look.x * 12, z: s1.z + padP1.look.z * 12 };
+    } else if (padMode) {
+      // controller without the right stick: aim where you fly (or keep facing the same way)
+      const d = mx || mz ? Math.atan2(mz, mx) : s1.heading;
+      c1.aim = { x: s1.x + Math.cos(d) * 12, z: s1.z + Math.sin(d) * 12 };
     } else if (input.touchActive) {
       const t = this.nearestTarget(s1.x, s1.z, 30) ?? (this.isCalm ? this.nearestRock(s1.x, s1.z, 26) : null);
       if (t) c1.aim = { x: t.x, z: t.z };
@@ -1378,7 +1405,14 @@ export class Game {
     const s2 = this.p2;
     if (s2) {
       const c2 = s2.cmd;
-      const mv = padP2 ? padP2.move : input.p2Move();
+      const kb2 = input.p2Move();
+      let m2x = kb2.x + (padP2?.move.x ?? 0), m2z = kb2.z + (padP2?.move.z ?? 0);
+      const l2 = Math.hypot(m2x, m2z);
+      if (l2 > 1) {
+        m2x /= l2;
+        m2z /= l2;
+      }
+      const mv = { x: m2x, z: m2z };
       c2.move = mv;
       if (padP2 && len(padP2.look) > 0.35) {
         c2.aim = { x: s2.x + padP2.look.x * 12, z: s2.z + padP2.look.z * 12 };
@@ -1390,14 +1424,33 @@ export class Game {
         else if (mv.x || mv.z) c2.aim = { x: s2.x + mv.x * 10, z: s2.z + mv.z * 10 };
         c2.fire = !!t || !!padP2?.fire;
       }
-      c2.dash = padP2 ? padP2.dash : input.pressed('ShiftRight');
-      c2.missile = padP2 ? padP2.missile : input.pressed('Enter', 'NumpadEnter');
-      c2.nova = padP2 ? padP2.nova : input.pressed('Slash');
+      c2.dash = input.pressed('ShiftRight') || !!padP2?.dash;
+      c2.missile = input.pressed('Enter', 'NumpadEnter') || !!padP2?.missile;
+      c2.nova = input.pressed('Slash') || !!padP2?.nova;
     }
 
     // controller buttons for the menus
-    if (padP1?.build || (!this.coop && padP2?.build)) this.setBuild(!this.buildMode);
-    if (padP1?.pause || padP2?.pause) this.setPaused(!this.paused);
+    if ((this.mode === 'over' || this.mode === 'victory') && this.pads.list.some((p) => p.confirm)) this.ui.pressPrimary();
+    if (padP1?.build) this.setBuild(!this.buildMode);
+    if ((padP1?.pause || padP2?.pause) && !this.controlsLocked) this.setPaused(!this.paused);
+  }
+
+  /**
+   * Controllers keep the player they first joined as (unplugging one never moves another).
+   * Solo: every controller flies player 1. Co-op: the first one seen is player 2 (player 1
+   * has the keyboard and mouse), the second one player 1.
+   */
+  private assignPads(): { padP1: PadState | null; padP2: PadState | null } {
+    this.pads.poll();
+    const live = this.pads.list;
+    for (const idx of [...this.padOwner.keys()]) if (!live.some((p) => p.index === idx)) this.padOwner.delete(idx);
+    for (const p of live) {
+      if (this.padOwner.has(p.index)) continue;
+      const owned = new Set(this.padOwner.values());
+      this.padOwner.set(p.index, !this.coop ? 0 : !owned.has(1) ? 1 : !owned.has(0) ? 0 : 1);
+    }
+    const first = (who: 0 | 1) => live.find((p) => this.padOwner.get(p.index) === who) ?? null;
+    return { padP1: first(0), padP2: this.coop ? first(1) : null };
   }
 
   private handleKeys(): void {

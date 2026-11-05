@@ -80,8 +80,11 @@ export class Ship {
     this.iframes = BAL.ship.hitIframes;
     this.lastHit = 0;
     this.flashT = 0.1;
-    game.stage.shake(0.35);
-    game.fx.screen('rgba(255,40,40,1)', 0.18);
+    // the red screen flash means "you": only for player 1 (player 2's ship just flashes)
+    if (this.id === 0) {
+      game.stage.shake(0.35);
+      game.fx.screen('rgba(255,40,40,1)', 0.18);
+    } else game.stage.shake(0.12);
     game.audio.play('hurt');
     if (this.hp <= 0) this.die(game);
     return true;
@@ -95,8 +98,13 @@ export class Ship {
     game.fx.explosion(this.x, this.z, 2.2, 0x6fe0ff, 0xc8d2dc);
     game.stage.shake(0.9);
     game.audio.play('bigBoom');
-    game.ui.banner('Ship destroyed!', 'Respawning at the station…', 'bad', 2.2);
-    game.sayOne(LINES.shipDown);
+    if (this.id === 0) {
+      game.ui.banner(game.p2 ? 'Player 1 is down!' : 'Ship destroyed!', 'Respawning at the station…', 'bad', 2.2);
+      game.sayOne(LINES.shipDown);
+    } else {
+      game.ui.toast('Player 2 is down! Back in 3 seconds…', 'bad');
+      game.sayOne(LINES.p2Down);
+    }
   }
 
   respawn(game: Game): void {

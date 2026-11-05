@@ -7,6 +7,8 @@ export class Input {
   mouseX = 0;
   mouseY = 0;
   hasMouse = false;
+  /** performance.now() of the last real mouse movement (to tell mouse from controller aiming) */
+  mouseMovedAt = 0;
   fireHeld = false;
   private leftArmed = false;
   private rightDown = false;
@@ -22,7 +24,8 @@ export class Input {
       // typing in a text field (the commander name) is not a game key
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
-      if (e.code === 'Space' || e.code === 'Tab' || e.code.startsWith('Arrow')) e.preventDefault();
+      // (Slash and Quote open Firefox's Quick Find, which would steal the keyboard mid-game)
+      if (e.code === 'Space' || e.code === 'Tab' || e.code.startsWith('Arrow') || e.code === 'Slash' || e.code === 'Quote') e.preventDefault();
       if (!e.repeat) this.edges.add(e.code);
       this.down.add(e.code);
     });
@@ -33,6 +36,7 @@ export class Input {
     // another is held arrives as a pointermove (chorded buttons), not a pointerdown.
     const track = (e: PointerEvent, isDown: boolean) => {
       if (e.pointerType === 'touch') return;
+      if (e.clientX !== this.mouseX || e.clientY !== this.mouseY || isDown) this.mouseMovedAt = performance.now();
       this.mouseX = e.clientX;
       this.mouseY = e.clientY;
       this.hasMouse = true;
