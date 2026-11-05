@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { Game } from '../game';
 import { Rng } from '../logic/math';
 import { makeCrate, makePickup, PICKUP_COLORS, type PickupKind } from '../render/models';
+import type { Ship } from './ship';
 
 const rng = new Rng(31337);
 export const POWERUPS: PickupKind[] = ['overdrive', 'bubble', 'magnet', 'nuke'];
@@ -50,15 +51,15 @@ export class Pickups {
   }
 
   update(dt: number, game: Game): void {
-    const ship = game.ship;
     for (const p of this.list) {
       p.t += dt;
-      if (ship.alive) {
+      const ship = game.nearestShip(p.x, p.z, 7);
+      if (ship) {
         const dx = ship.x - p.x, dz = ship.z - p.z;
         const d = Math.hypot(dx, dz);
         if (d < 2.2) {
           p.alive = false;
-          this.collect(p, game);
+          this.collect(p, game, ship);
           continue;
         }
         if (d < 7) {
@@ -79,14 +80,14 @@ export class Pickups {
     });
   }
 
-  private collect(p: Pickup, game: Game): void {
+  private collect(p: Pickup, game: Game, ship: Ship): void {
     if (p.kind === 'crate') {
       game.fx.explosion(p.x, p.z, 1.2, 0x7dffb0, -1);
       game.crystals.spawn(p.x, p.z, 18, 1, game);
-      game.applyPowerup(rng.pick(POWERUPS), p.x, p.z);
+      game.applyPowerup(rng.pick(POWERUPS), p.x, p.z, ship);
       return;
     }
-    game.applyPowerup(p.kind, p.x, p.z);
+    game.applyPowerup(p.kind, p.x, p.z, ship);
   }
 
   /** For edge indicators. */

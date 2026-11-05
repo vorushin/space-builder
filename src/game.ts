@@ -18,7 +18,7 @@ import { awardMedal, commanderTitle, decodeProfile, encodeProfile, PROFILE_KEY, 
 import { buildEndlessWave, buildWave, type SpawnOrder } from './logic/waves';
 import type { Background } from './render/background';
 import { Fx } from './render/fx';
-import { paintShip, type PickupKind } from './render/models';
+import type { PickupKind } from './render/models';
 import type { Stage } from './render/stage';
 import type { UI } from './ui/ui';
 import { AsteroidField } from './world/asteroids';
@@ -31,6 +31,8 @@ import { Missiles } from './world/missiles';
 import { Pickups, POWERUP_NAMES } from './world/pickups';
 import { Bolts } from './world/projectiles';
 import { Ship } from './world/ship';
+import { Gamepads, type PadState } from './gamepad';
+import { PAINTS } from './config/paints';
 import { Station } from './world/station';
 import type { Hittable } from './world/types';
 
@@ -66,7 +68,12 @@ const freshStats = (): Stats => ({ kills: 0, rocks: 0, comets: 0, crystals: 0, m
 
 export class Game {
   readonly fx: Fx;
+  /** player 1 (always there) */
   readonly ship: Ship;
+  /** player 2 in co-op */
+  p2: Ship | null = null;
+  coop = false;
+  readonly pads = new Gamepads();
   readonly station: Station;
   readonly asteroids: AsteroidField;
   readonly crystals: Crystals;
@@ -115,6 +122,7 @@ export class Game {
   private gainZ = 0;
   private magnetsBuf: Magnet[] = [];
   private shipMagnet: Magnet;
+  private p2Magnet: Magnet = { x: 0, z: 0, r: BAL.ship.magnetRadius, k: 1, onCollect: (v, x, z) => this.addCrystals(v, x, z) };
   private stationMagnet: Magnet;
   private calmEventDone = false;
   private calmT = 0;
@@ -245,11 +253,16 @@ export class Game {
     this.drones.clear();
     this.sparky = cp.sparky;
     if (this.sparky) this.drones.addSparky(this);
-    this.ship.setGunTier(cp.gunTier);
-    this.ship.missilesMax = BAL.missiles.start + cp.sector * BAL.missiles.perSector;
-    this.ship.missiles = this.ship.missilesMax;
-    this.ship.respawn(this);
-    this.ship.iframes = 0;
+    this.setCoop(this.profile.players === 2);
+    // co-op: two pilots, so enemies get a bit tougher
+    if (this.coop) this.mods = { ...this.mods, enemyHp: this.mods.enemyHp * 1.3 };
+    for (const s of this.ships) {
+      s.setGunTier(cp.gunTier);
+      s.missilesMax = BAL.missiles.start + cp.sector * BAL.missiles.perSector;
+      s.missiles = s.missilesMax;
+      s.respawn(this);
+      s.iframes = 0;
+    }
     this.nova = 0;
     this.novaAnnounced = false;
     this.said.clear();
@@ -324,6 +337,7 @@ export class Game {
     this.audio.setPaused(false);
     this.checkpoint = this.loadCheckpoint();
     this.ship.rig.root.visible = true;
+    this.setCoop(false);
     this.drones.clear();
     this.station.load(this.checkpoint?.rings ?? 2, this.checkpoint?.modules ?? [
       { socket: 0, kind: 'turret', tier: 2 },
@@ -367,7 +381,43 @@ export class Game {
   }
 
   private applyPaint(): void {
-    paintShip(this.ship.rig, PAINT_BY_ID[this.profile.paint] ?? PAINT_BY_ID.arctic);
+    const p1 = PAINT_BY_ID[this.profile.paint] ?? PAINT_BY_ID.arctic;
+    this.ship.setPaint(p1);
+    // player 2 gets a contrasting paint job
+    if (this.p2) this.p2.setPaint(PAINTS[(PAINTS.indexOf(p1) + 3) % PAINTS.length]);
+  }
+
+  /** Both players' ships (player 2 only in co-op). */
+  get ships(): Ship[] {
+    return this.p2 ? [this.ship, this.p2] : [this.ship];
+  }
+
+  /** Closest living ship to (x, z), or null. */
+  nearestShip(x: number, z: number, maxDist = Infinity): Ship | null {
+    let best: Ship | null = null;
+    let bd = maxDist * maxDist;
+    for (const s of this.ships) {
+      if (!s.alive) continue;
+      const d = (s.x - x) ** 2 + (s.z - z) ** 2;
+      if (d < bd) {
+        bd = d;
+        best = s;
+      }
+    }
+    return best;
+  }
+
+  /** Turn co-op on or off (player 2's ship appears next to player 1's). */
+  setCoop(on: boolean): void {
+    this.coop = on;
+    if (on && !this.p2) {
+      this.p2 = new Ship(this.stage.scene, 1);
+      this.applyPaint();
+    }
+    if (!on && this.p2) {
+      this.stage.scene.remove(this.p2.rig.root);
+      this.p2 = null;
+    }
   }
 
   get paint() {
@@ -502,7 +552,7 @@ export class Game {
       const d = Math.hypot(t.x - x, t.z - z) - t.r;
       if (d < radius) t.onHit(dmg * (d < radius * 0.5 ? 1 : 0.6), this, x, z);
     }
-    if (team === 'neutral' && this.ship.alive && Math.hypot(this.ship.x - x, this.ship.z - z) < radius) this.ship.hurt(12, this);
+    if (team === 'neutral') for (const s of this.ships) if (s.alive && Math.hypot(s.x - x, s.z - z) < radius) s.hurt(12, this);
   }
 
   splash(x: number, z: number, radius: number, dmg: number, exclude: Hittable, color: number): void {
@@ -577,19 +627,18 @@ export class Game {
     this.hitStopT = Math.max(this.hitStopT, t);
   }
 
-  applyPowerup(kind: PickupKind, x: number, z: number): void {
+  applyPowerup(kind: PickupKind, x: number, z: number, ship: Ship = this.ship): void {
     this.fx.text(x, z, POWERUP_NAMES[kind], 'fx-power');
     this.audio.play('powerup');
-    this.stats.crystals += 0;
-    if (kind === 'overdrive') this.ship.overdrive = 10;
-    if (kind === 'bubble') this.ship.bubble = 8;
+    if (kind === 'overdrive') ship.overdrive = 10;
+    if (kind === 'bubble') ship.bubble = 8;
     if (kind === 'magnet') {
       this.crystals.vacuum();
       this.ui.toast('All crystals fly home!', 'gold');
     }
     if (kind === 'nuke') {
       this.fx.screen('rgba(255,240,200,1)', 0.6);
-      this.explode(this.ship.x, this.ship.z, 24, 500 * (1 + this.sector), 'player', 0xffe04a);
+      this.explode(ship.x, ship.z, 24, 500 * (1 + this.sector), 'player', 0xffe04a);
       this.stage.shake(1.1);
       this.audio.play('bigBoom');
     }
@@ -617,8 +666,8 @@ export class Game {
     }
   }
 
-  releaseNova(): void {
-    const s = this.ship;
+  releaseNova(from?: Ship): void {
+    const s = from && from.alive ? from : this.ship.alive ? this.ship : (this.p2 ?? this.ship);
     if (this.nova < 1 || this.mode !== 'play' || this.controlsLocked || this.buildMode || this.paused || !s.alive) {
       if (this.nova < 1) this.audio.play('denied');
       return;
@@ -769,9 +818,8 @@ export class Game {
       this.dangerSaidWave = this.director.wave;
       this.sayOne(LINES.stationDanger);
     }
-    const s = this.ship;
     this.alarmT -= realDt;
-    if (s.alive && s.hp < s.maxHp * 0.35 && this.alarmT <= 0) {
+    if (this.ships.some((s) => s.alive && s.hp < s.maxHp * 0.35) && this.alarmT <= 0) {
       this.alarmT = 1.6;
       this.audio.play('alarm');
     }
@@ -790,10 +838,13 @@ export class Game {
       return;
     }
     if (!this.spend(cost)) return;
-    this.ship.setGunTier(this.ship.gunTier + 1);
-    const g = GUNS[this.ship.gunTier - 1];
-    this.fx.ring(this.ship.x, this.ship.z, 4, g.color, 0.5);
-    this.fx.sparks(this.ship.x, this.ship.z, g.color, 24, 8);
+    const tier = this.ship.gunTier + 1;
+    const g = GUNS[tier - 1];
+    for (const s of this.ships) {
+      s.setGunTier(tier);
+      this.fx.ring(s.x, s.z, 4, g.color, 0.5);
+      this.fx.sparks(s.x, s.z, g.color, 24, 8);
+    }
     this.ui.banner(g.name.toUpperCase() + '!', `Ship guns level ${this.ship.gunTier}`, 'info', 1.6);
     this.audio.play('upgrade');
     this.ui.hint('guns');
@@ -956,7 +1007,7 @@ export class Game {
           this.bank += bonus;
           this.crystals.vacuum();
           this.station.repairFull();
-          if (this.ship.alive) this.ship.hp = this.ship.maxHp;
+          for (const s of this.ships) if (s.alive) s.hp = s.maxHp;
           this.ui.banner('WAVE CLEARED!', `+${bonus} 💎 bonus, station repaired`, 'good', 2.4);
           this.ui.clearIncoming();
           this.audio.play('waveClear');
@@ -1018,9 +1069,9 @@ export class Game {
     const t0 = this.hyperT;
     this.hyperT += realDt;
     const t = this.hyperT;
-    const s = this.ship;
-    if (s.alive) {
-      const tx = 0, tz = this.station.radius + 3;
+    for (const s of this.ships) {
+      if (!s.alive) continue;
+      const tx = s.id === 1 ? 4 : 0, tz = this.station.radius + 3;
       s.x += (tx - s.x) * (1 - Math.exp(-2 * realDt));
       s.z += (tz - s.z) * (1 - Math.exp(-2 * realDt));
       s.vx = s.vz = 0;
@@ -1059,8 +1110,12 @@ export class Game {
     this.ship.missilesMax = BAL.missiles.start + index * BAL.missiles.perSector;
     this.ship.missiles = this.ship.missilesMax;
     this.station.repairFull();
-    if (!this.ship.alive) this.ship.respawn(this);
-    this.ship.hp = this.ship.maxHp;
+    for (const s of this.ships) {
+      s.missilesMax = this.ship.missilesMax;
+      s.missiles = s.missilesMax;
+      if (!s.alive) s.respawn(this);
+      s.hp = s.maxHp;
+    }
     this.makeDirector(false);
     this.saveCheckpoint();
   }
@@ -1095,6 +1150,8 @@ export class Game {
       }
     }
     if (this.paused) {
+      this.pads.poll();
+      if (this.pads.pads.some((p) => p.pause)) this.setPaused(false);
       this.ui.update(this, 0);
       this.stage.update(0);
       input.endFrame();
@@ -1117,18 +1174,7 @@ export class Game {
     this.time += dt;
     if (this.mode === 'play') this.stats.time += realDt;
 
-    // aim
-    if (input.touchActive || this.autoFire) {
-      const t = this.nearestTarget(this.ship.x, this.ship.z, 30) ?? (this.isCalm ? this.nearestRock(this.ship.x, this.ship.z, 26) : null);
-      if (t) this.aim = { x: t.x, z: t.z };
-      else {
-        const mv = input.move();
-        if (mv.x || mv.z) this.aim = { x: this.ship.x + mv.x * 10, z: this.ship.z + mv.z * 10 };
-      }
-      this.autoFire = input.touchActive && !!t;
-    } else if (input.hasMouse) {
-      this.aim = this.stage.screenToWorld(input.mouseX, input.mouseY);
-    }
+    this.buildCommands();
 
     // collision grid
     this.grid.clear();
@@ -1150,7 +1196,7 @@ export class Game {
     for (const t of due) t.fn();
 
     // world
-    this.ship.update(dt, this);
+    for (const s of this.ships) s.update(dt, this);
     this.station.update(dt, this);
     this.drones.update(dt, this);
     for (const e of this.enemies) if (e.alive) e.update(dt, this);
@@ -1210,6 +1256,12 @@ export class Game {
       this.shipMagnet.r = BAL.ship.magnetRadius + (this.sparky ? 4 : 0);
       m.push(this.shipMagnet);
     }
+    const p2 = this.p2;
+    if (p2?.alive) {
+      this.p2Magnet.x = p2.x;
+      this.p2Magnet.z = p2.z;
+      m.push(this.p2Magnet);
+    }
     this.stationMagnet.r = this.station.magnetRadius;
     if (this.station.alive) m.push(this.stationMagnet);
     this.drones.magnets(m);
@@ -1250,6 +1302,16 @@ export class Game {
     }
     st.distGoal = (this.boss?.alive ? BAL.camera.bossDist : BAL.camera.dist) + (this.station.rings - 1) * 4;
     st.distGoal *= 1 + this.zoom * 0.12;
+    const p2 = this.p2;
+    if (p2 && (p2.alive || s.alive)) {
+      // co-op: look at the middle of both pilots and back off as they spread out
+      const a = s.alive ? s : p2;
+      const b = p2.alive ? p2 : s;
+      const sep = Math.hypot(a.x - b.x, a.z - b.z);
+      st.distGoal = Math.min(84, Math.max(st.distGoal, sep * 1.05 + 14));
+      st.follow((a.x + b.x) / 2, (a.z + b.z) / 2 + 2, realDt);
+      return;
+    }
     if (s.alive) {
       const ax = Math.max(-12, Math.min(12, (this.aim.x - s.x) * BAL.camera.lookAhead));
       const az = Math.max(-9, Math.min(9, (this.aim.z - s.z) * BAL.camera.lookAhead));
@@ -1267,6 +1329,75 @@ export class Game {
     this.audio.setPaused(p);
   }
 
+  /**
+   * Turn keyboard / mouse / touch / gamepads into each ship's commands.
+   * Solo: WASD+arrows+mouse (+ any gamepad) fly player 1.
+   * Co-op: player 1 = WASD+mouse (or gamepad 1 when two are plugged in);
+   *        player 2 = a gamepad, or the arrow keys with auto-aim (Right Shift dash, Enter missile, / NOVA).
+   */
+  private buildCommands(): void {
+    const input = this.input;
+    const pads = this.pads;
+    pads.poll();
+    const live = pads.pads.filter((p) => p.connected);
+    const padP1: PadState | null = this.coop ? (live.length >= 2 ? live[0] : null) : (live[0] ?? null);
+    const padP2: PadState | null = this.coop ? (live.length >= 2 ? live[1] : live[0] ?? null) : null;
+    const len = (v: { x: number; z: number }) => Math.hypot(v.x, v.z);
+
+    // ---- player 1
+    const s1 = this.ship;
+    const c1 = s1.cmd;
+    const kb = input.move(!this.coop);
+    let mx = kb.x + (padP1?.move.x ?? 0), mz = kb.z + (padP1?.move.z ?? 0);
+    const ml = Math.hypot(mx, mz);
+    if (ml > 1) {
+      mx /= ml;
+      mz /= ml;
+    }
+    c1.move = { x: mx, z: mz };
+    this.autoFire = false;
+    if (padP1 && len(padP1.look) > 0.35) {
+      c1.aim = { x: s1.x + padP1.look.x * 12, z: s1.z + padP1.look.z * 12 };
+    } else if (input.touchActive) {
+      const t = this.nearestTarget(s1.x, s1.z, 30) ?? (this.isCalm ? this.nearestRock(s1.x, s1.z, 26) : null);
+      if (t) c1.aim = { x: t.x, z: t.z };
+      else if (mx || mz) c1.aim = { x: s1.x + mx * 10, z: s1.z + mz * 10 };
+      this.autoFire = !!t;
+    } else if (input.hasMouse) {
+      c1.aim = this.stage.screenToWorld(input.mouseX, input.mouseY);
+    }
+    c1.fire = input.fireHeld || this.autoFire || !!padP1?.fire;
+    c1.dash = input.pressed('Space', 'ShiftLeft') || (!this.coop && input.pressed('ShiftRight')) || !!padP1?.dash;
+    c1.missile = input.pressed('Mouse2', 'KeyQ', 'KeyE') || !!padP1?.missile;
+    c1.nova = input.pressed('KeyF') || !!padP1?.nova;
+    this.aim = c1.aim;
+
+    // ---- player 2
+    const s2 = this.p2;
+    if (s2) {
+      const c2 = s2.cmd;
+      const mv = padP2 ? padP2.move : input.p2Move();
+      c2.move = mv;
+      if (padP2 && len(padP2.look) > 0.35) {
+        c2.aim = { x: s2.x + padP2.look.x * 12, z: s2.z + padP2.look.z * 12 };
+        c2.fire = true;
+      } else {
+        // no right stick: aim and shoot at the nearest thing by itself
+        const t = this.nearestTarget(s2.x, s2.z, 30) ?? (this.isCalm ? this.nearestRock(s2.x, s2.z, 24) : null);
+        if (t) c2.aim = { x: t.x, z: t.z };
+        else if (mv.x || mv.z) c2.aim = { x: s2.x + mv.x * 10, z: s2.z + mv.z * 10 };
+        c2.fire = !!t || !!padP2?.fire;
+      }
+      c2.dash = padP2 ? padP2.dash : input.pressed('ShiftRight');
+      c2.missile = padP2 ? padP2.missile : input.pressed('Enter', 'NumpadEnter');
+      c2.nova = padP2 ? padP2.nova : input.pressed('Slash');
+    }
+
+    // controller buttons for the menus
+    if (padP1?.build || (!this.coop && padP2?.build)) this.setBuild(!this.buildMode);
+    if (padP1?.pause || padP2?.pause) this.setPaused(!this.paused);
+  }
+
   private handleKeys(): void {
     const input = this.input;
     if (input.wheel) this.zoom = Math.max(-2, Math.min(3, this.zoom + input.wheel * 0.5));
@@ -1280,7 +1411,6 @@ export class Game {
     for (const m of MODULES) if (input.pressed('Digit' + m.hotkey, 'Numpad' + m.hotkey)) this.selectModule(m.kind);
     if (input.pressed('KeyX')) this.expandStation();
     if (input.pressed('KeyN')) this.callWave();
-    if (input.pressed('KeyF')) this.releaseNova();
     if (this.dev) {
       if (input.pressed('Digit8')) this.bank += 500 * SECTOR_VALUE[this.sector];
       if (input.pressed('Digit9')) this.devClearWave();

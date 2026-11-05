@@ -180,8 +180,7 @@ export class Events {
       const on = Math.sin(game.time * 6) > 0;
       (beacon.material as THREE.MeshBasicMaterial).color.setRGB(on ? 4 : 0.5, on ? 3.2 : 0.4, on ? 1 : 0.1);
       if (Math.random() < 0.1) game.fx.ring(p.x, p.z, 4, 0xffd25a, 0.8);
-      const s = game.ship;
-      if (s.alive && Math.hypot(s.x - p.x, s.z - p.z) < 4) {
+      if (game.nearestShip(p.x, p.z, 4)) {
         game.fx.explosion(p.x, p.z, 1.2, 0xffd25a, -1);
         this.scene.remove(p.mesh);
         this.pod = null;

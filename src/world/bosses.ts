@@ -7,6 +7,7 @@ import { leadAim } from '../logic/targeting';
 import { glass } from '../render/materials';
 import { makeBoss, type Rig } from '../render/models';
 import type { Hittable } from './types';
+import type { Ship } from './ship';
 
 const rng = new Rng(666);
 
@@ -163,12 +164,17 @@ export class Boss implements Hittable {
     for (const d of this.decoys) this.scene.remove(d.mesh);
   }
 
-  /** Aim point: the ship if it's close and alive, else the station. */
+  /** Aim point: the nearest ship if one is close, else the station. */
   private target(game: Game): { x: number; z: number; ship: boolean } {
-    const s = game.ship;
-    if (s.alive && Math.hypot(s.x - this.x, s.z - this.z) < 48) return { x: s.x, z: s.z, ship: true };
+    const s = game.nearestShip(this.x, this.z, 48);
+    if (s) {
+      this.prey = s;
+      return { x: s.x, z: s.z, ship: true };
+    }
     return { x: game.station.x, z: game.station.z, ship: false };
   }
+
+  private prey: Ship | null = null;
 
   private bolt(game: Game, x: number, z: number, angle: number, speed = 16, size = 1.4, homing = 0, life?: number): void {
     game.bolts.fire({ x, z, angle, speed, dmg: this.def.dmg, team: 'enemy', color: this.def.glow, range: 60, size, homing, life });
@@ -296,7 +302,7 @@ export class Boss implements Hittable {
     }
     if (this.cd.aim <= 0 && tg.ship) {
       this.cd.aim = 1.3;
-      const p = leadAim(this, game.ship, 18);
+      const p = leadAim(this, this.prey ?? game.ship, 18);
       const a = Math.atan2(p.z - this.z, p.x - this.x);
       for (const o of [-0.15, 0, 0.15]) this.bolt(game, this.x + Math.cos(this.heading) * 2, this.z + Math.sin(this.heading) * 2, a + o, 18, 1.2);
     }
@@ -353,8 +359,7 @@ export class Boss implements Hittable {
       this.vx = Math.cos(this.heading) * sp;
       this.vz = Math.sin(this.heading) * sp;
       game.fx.particle(this.x, 0.3, this.z, 0, 0, 0, 0xff4a2a, 3, 0.4, 2, 0);
-      const s = game.ship;
-      if (s.alive && Math.hypot(s.x - this.x, s.z - this.z) < this.r + s.r + 0.5) s.hurt(25, game);
+      for (const s of game.ships) if (s.alive && Math.hypot(s.x - this.x, s.z - this.z) < this.r + s.r + 0.5) s.hurt(25, game);
       const st = game.station;
       // (update() keeps bosses at station.radius + r + 2, so "touching" means within that ring)
       if (st.alive && Math.hypot(this.x, this.z) < st.radius + this.r + 2.5 && !cease) {
@@ -499,8 +504,7 @@ export class Boss implements Hittable {
       const ex = this.x + Math.cos(this.laserA) * len, ez = this.z + Math.sin(this.laserA) * len;
       game.fx.segment(this.x, 1.6, this.z, ex, 0.6, ez, 1.1, new THREE.Color(4, 1.4, 0.3));
       game.fx.segment(this.x, 1.6, this.z, ex, 0.6, ez, 0.4, new THREE.Color(5, 5, 4));
-      const s = game.ship;
-      if (s.alive && segDist(s.x, s.z, this.x, this.z, ex, ez) < 1.4 + s.r) s.hurt(22, game);
+      for (const s of game.ships) if (s.alive && segDist(s.x, s.z, this.x, this.z, ex, ez) < 1.4 + s.r) s.hurt(22, game);
       const st = game.station;
       if (st.alive && segDist(st.x, st.z, this.x, this.z, ex, ez) < st.radius) st.hurt(45 * dt, game, st.x, st.z);
       if (Math.random() < 0.5) game.fx.sparks(ex, ez, 0xffb030, 3, 6, 0.5);

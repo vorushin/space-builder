@@ -5,7 +5,7 @@ import { awardMedal, cleanName, commanderTitle, decodeProfile, defaultProfile, e
 
 describe('profile', () => {
   it('round-trips', () => {
-    const p = { ...defaultProfile(), name: 'Robert', paint: 'crimson', medals: ['first_build', 'nova'], bestEndless: 12, rocks: 340 };
+    const p = { ...defaultProfile(), name: 'Robert', paint: 'crimson', medals: ['first_build', 'nova'], bestEndless: 12, rocks: 340, players: 2 as const };
     expect(decodeProfile(encodeProfile(p))).toEqual(p);
   });
 
@@ -21,6 +21,7 @@ describe('profile', () => {
     expect(p.medals).toEqual(['nova']);
     expect(p.bestEndless).toBe(0);
     expect(p.rocks).toBe(0);
+    expect(decodeProfile(JSON.stringify({ players: 3 })).players).toBe(1);
   });
 
   it('awards each medal once and ignores unknown ones', () => {

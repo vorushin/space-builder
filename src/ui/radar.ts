@@ -121,13 +121,13 @@ export class Radar {
       c.arc(px(game.boss.x), pz(game.boss.z), 6, 0, Math.PI * 2);
       c.fill();
     }
-    // the player's ship: an arrow
-    const sh = game.ship;
-    if (sh.alive) {
+    // the players' ships: arrows (player 2 in gold)
+    for (const sh of game.ships) {
+      if (!sh.alive) continue;
       c.save();
       c.translate(px(sh.x), pz(sh.z));
       c.rotate(sh.heading);
-      c.fillStyle = '#ffffff';
+      c.fillStyle = sh.id === 0 ? '#ffffff' : '#ffcf4a';
       c.beginPath();
       c.moveTo(6, 0);
       c.lineTo(-4, 3.5);

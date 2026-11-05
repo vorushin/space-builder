@@ -327,3 +327,16 @@ body.lowhp .vignette { animation: lowhp 1.2s ease-in-out infinite; }
 .row-btns { display: flex; gap: 10px; }
 .row-btns .btn { min-width: 0; flex: 1; font-size: 17px; padding: 11px 16px; }
 .best { margin-top: 10px; font-size: 13px; color: var(--muted); }
+
+/* ---------- co-op ---------- */
+.diff .sep { width: 14px; }
+.p2-help { display: none; max-width: 520px; margin: -2px auto 4px; font-size: 13px; color: #cfe0f3; background: rgba(8, 18, 34, 0.6); border-radius: 10px; padding: 6px 12px; }
+.help-coop { margin: 0 0 16px; font-size: 14px; line-height: 1.4; color: #cfe0f3; }
+.p2-panel { position: absolute; left: 266px; top: 14px; padding: 8px 12px 10px; width: 190px; display: none; }
+.p2-head { display: flex; justify-content: space-between; align-items: baseline; font-size: 13px; color: var(--muted); }
+.p2-head b { font-family: var(--display); font-weight: 400; font-size: 15px; color: var(--gold); }
+.p2-panel .bar { margin-top: 6px; }
+.p2-panel .ammo { margin-top: 7px; }
+.ship-tag { position: absolute; left: 0; top: 0; display: none; font-family: var(--display); font-size: 12px; padding: 1px 6px; border-radius: 6px; color: #08121f; background: #eef4fb; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5); pointer-events: none; will-change: transform; }
+.ship-tag.p2 { background: var(--gold); }
+@media (max-width: 1100px) { .p2-panel { left: 16px; top: 176px; } body.coop .comms { top: 262px; } }

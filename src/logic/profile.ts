@@ -9,12 +9,14 @@ export interface Profile {
   medals: string[];
   bestEndless: number;
   rocks: number;
+  /** 1 = solo, 2 = co-op on one computer */
+  players: 1 | 2;
 }
 
 export const PROFILE_KEY = 'space-builder-3d.profile';
 export const NAME_MAX = 16;
 
-export const defaultProfile = (): Profile => ({ v: 1, name: '', paint: 'arctic', medals: [], bestEndless: 0, rocks: 0 });
+export const defaultProfile = (): Profile => ({ v: 1, name: '', paint: 'arctic', medals: [], bestEndless: 0, rocks: 0, players: 1 });
 
 /** Trim, drop control characters and cap the length. */
 export function cleanName(raw: unknown): string {
@@ -46,6 +48,7 @@ export function decodeProfile(s: string | null | undefined): Profile {
   p.medals = Array.isArray(o.medals) ? [...new Set(o.medals.filter((m): m is string => typeof m === 'string' && MEDAL_IDS.includes(m)))] : [];
   p.bestEndless = count(o.bestEndless);
   p.rocks = count(o.rocks);
+  p.players = o.players === 2 ? 2 : 1;
   return p;
 }
 

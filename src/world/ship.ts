@@ -3,10 +3,24 @@ import { BAL } from '../config/balance';
 import { GUNS } from '../config/guns';
 import type { Game } from '../game';
 import { clamp, turnToward, wrapAngle } from '../logic/math';
-import { makeShip, setShipGuns, type ShipRig } from '../render/models';
+import { makeShip, paintShip, setShipGuns, type ShipRig } from '../render/models';
 import { LINES } from '../config/lines';
+import type { Paint } from '../config/paints';
+import type { V2 } from '../logic/math';
 
-/** The player's ship: twin-stick flight, guns, dash, missiles. */
+/** What a ship's pilot wants this frame (filled by the game from keyboard/mouse/touch/gamepad). */
+export interface ShipCmd {
+  move: V2;
+  aim: V2;
+  fire: boolean;
+  dash: boolean;
+  missile: boolean;
+  nova: boolean;
+}
+
+export const idleCmd = (): ShipCmd => ({ move: { x: 0, z: 0 }, aim: { x: 0, z: -10 }, fire: false, dash: false, missile: false, nova: false });
+
+/** A player's ship: twin-stick flight, guns, dash, missiles. Player 1 is id 0, player 2 is id 1. */
 export class Ship {
   x = 0;
   z = 12;
@@ -35,11 +49,18 @@ export class Ship {
   private flashT = 0;
   readonly rig: ShipRig;
   private laserSfxCd = 0;
+  cmd: ShipCmd = idleCmd();
+  paint: Paint | null = null;
 
-  constructor(scene: THREE.Scene) {
+  constructor(scene: THREE.Scene, readonly id = 0) {
     this.rig = makeShip();
     setShipGuns(this.rig, 1, GUNS[0].color);
     scene.add(this.rig.root);
+  }
+
+  setPaint(p: Paint): void {
+    this.paint = p;
+    paintShip(this.rig, p);
   }
 
   setGunTier(tier: number): void {
@@ -82,7 +103,7 @@ export class Ship {
     const s = game.station;
     this.alive = true;
     this.hp = this.maxHp;
-    this.x = s.x;
+    this.x = s.x + (this.id === 1 ? 4 : 0);
     this.z = s.z + s.radius + 3;
     this.vx = this.vz = 0;
     this.iframes = 2;
@@ -92,7 +113,7 @@ export class Ship {
   }
 
   update(dt: number, game: Game): void {
-    const input = game.input;
+    const cmd = this.cmd;
     if (!this.alive) {
       this.respawnT -= dt;
       if (this.respawnT <= 0) this.respawn(game);
@@ -106,7 +127,7 @@ export class Ship {
     this.lastHit += dt;
 
     // --- movement ---
-    const mv = game.controlsLocked ? { x: 0, z: 0 } : input.move();
+    const mv = game.controlsLocked ? { x: 0, z: 0 } : cmd.move;
     const moving = mv.x !== 0 || mv.z !== 0;
     if (this.dashT > 0) {
       this.dashT -= dt;
@@ -116,7 +137,7 @@ export class Ship {
       this.vx += (mv.x * sb.maxSpeed - this.vx) * k;
       this.vz += (mv.z * sb.maxSpeed - this.vz) * k;
     }
-    if (!game.controlsLocked && input.pressed('Space', 'ShiftLeft', 'ShiftRight') && this.dashCd <= 0) {
+    if (!game.controlsLocked && cmd.dash && this.dashCd <= 0) {
       const dir = moving ? Math.atan2(mv.z, mv.x) : this.heading;
       this.vx = Math.cos(dir) * sb.dashSpeed;
       this.vz = Math.sin(dir) * sb.dashSpeed;
@@ -140,7 +161,7 @@ export class Ship {
     }
 
     // --- aim ---
-    const aim = game.aim;
+    const aim = cmd.aim;
     const want = Math.atan2(aim.z - this.z, aim.x - this.x);
     this.heading = turnToward(this.heading, want, sb.turnRate * dt);
 
@@ -155,7 +176,7 @@ export class Ship {
     // --- guns ---
     this.fireCd -= dt;
     this.laserSfxCd -= dt;
-    const firing = !game.controlsLocked && !game.buildMode && (input.fireHeld || game.autoFire);
+    const firing = !game.controlsLocked && !game.buildMode && cmd.fire;
     if (firing && this.fireCd <= 0) {
       const g = this.gun;
       const rate = g.rate * (this.overdrive > 0 ? 2.2 : 1);
@@ -173,7 +194,8 @@ export class Ship {
         this.missiles++;
       }
     } else this.missileRegen = 0;
-    if (!game.controlsLocked && input.pressed('Mouse2', 'KeyQ', 'KeyE') && this.missileCd <= 0) {
+    if (!game.controlsLocked && cmd.nova) game.releaseNova(this);
+    if (!game.controlsLocked && cmd.missile && this.missileCd <= 0) {
       if (this.missiles > 0) {
         this.missiles--;
         this.missileCd = 0.22;
@@ -207,7 +229,7 @@ export class Ship {
     for (const f of this.rig.flames) f.scale.set(thrust * (0.85 + Math.random() * 0.3), 1, 1);
     if (speed > 3 && Math.random() < 0.7) {
       const bx = this.x - Math.cos(this.heading) * 1.5, bz = this.z - Math.sin(this.heading) * 1.5;
-      game.fx.particle(bx, 0.05, bz, -this.vx * 0.15, 0, -this.vz * 0.15, game.paint.flame, 0.5, 0.35, 1.8, 1.5);
+      game.fx.particle(bx, 0.05, bz, -this.vx * 0.15, 0, -this.vz * 0.15, this.paint?.flame ?? 0x6fe0ff, 0.5, 0.35, 1.8, 1.5);
     }
     // a damaged ship smokes
     if (this.hp < this.maxHp * 0.35 && Math.random() < 0.45) {

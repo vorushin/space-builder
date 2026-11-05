@@ -153,7 +153,7 @@ export class AsteroidField {
   }
 
   update(dt: number, game: Game): void {
-    const ship = game.ship;
+    const ships = game.ships;
     const st = game.station;
     for (const a of this.list) {
       if (!a.alive) continue;
@@ -180,7 +180,8 @@ export class AsteroidField {
         }
       }
       // ship bumps
-      if (ship.alive) {
+      for (const ship of ships) {
+        if (!ship.alive) continue;
         const dx = ship.x - a.x, dz = ship.z - a.z;
         const d = Math.hypot(dx, dz);
         const rr = a.r + ship.r;

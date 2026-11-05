@@ -126,6 +126,8 @@ export class UI {
   private letterbox = h('div', 'letterbox');
   private bossCard = h('div', 'boss-card');
   private vignette = h('div', 'vignette');
+  private p2Panel = h('div', 'panel p2-panel', '<div class="p2-head"><b>Player 2</b><span data-r="p2gun"></span></div><div class="bar hull"><i></i></div><div class="ammo"><span>Missiles</span><div class="pips" data-r="p2pips"></div></div>');
+  private tags = [h('div', 'ship-tag p1', 'P1'), h('div', 'ship-tag p2', 'P2')];
 
   constructor(private root: HTMLElement) {
     try {
@@ -137,6 +139,7 @@ export class UI {
     root.append(this.vignette, this.hud, this.letterbox, this.bossCard, this.bannerEl, this.toasts, this.sectorCardEl, this.devEl);
     this.comms = new Comms(root);
     this.radar = new Radar(this.hud);
+    this.hud.append(this.p2Panel, ...this.tags);
     this.buildScreens();
     if (isTouch) document.body.classList.add('touch-mode');
   }
@@ -158,6 +161,7 @@ export class UI {
       if (game.mode === 'play' && !game.paused && !game.dev) game.setPaused(true);
     });
     if (isTouch) this.buildTouch(game);
+    game.pads.onChange = (n) => this.toast(n > 0 ? `🎮 Game controller connected (${n})` : 'Game controller unplugged', 'info');
   }
 
   // ================================================================ HUD construction
@@ -237,7 +241,8 @@ export class UI {
           <label>Ship paint <span class="swatches" data-r="swatches"></span></label>
         </div>
         <div class="menu">
-          <div class="diff"><button data-d="easy">Easy</button><button data-d="normal" class="on">Normal</button></div>
+          <div class="diff"><button data-d="easy">Easy</button><button data-d="normal" class="on">Normal</button><span class="sep"></span><button data-p="1" class="on">1 player</button><button data-p="2">2 players</button></div>
+          <div class="p2-help" data-r="p2help">Player 2: arrow keys to fly (it aims and shoots by itself), Right Shift dash, Enter missile, / NOVA. Or plug in a game controller.</div>
           <button class="btn primary" data-a="new">New game</button>
           <button class="btn" data-a="continue">Continue</button>
           <div class="row-btns"><button class="btn" data-a="help" style="--c:#7c8db0">How to play</button><button class="btn" data-a="medals" style="--c:#b7791f">Medals</button></div>
@@ -245,10 +250,17 @@ export class UI {
         <div class="best" data-r="best"></div>
         <div class="links"><a href="classic/index.html" target="_self">Play the classic 2D version</a></div>
       </div>`;
-    title.querySelectorAll<HTMLButtonElement>('.diff button').forEach((b) =>
+    title.querySelectorAll<HTMLButtonElement>('.diff button[data-d]').forEach((b) =>
       click(b, () => {
         this.diff = b.dataset.d as Difficulty;
-        title.querySelectorAll('.diff button').forEach((x) => x.classList.toggle('on', x === b));
+        title.querySelectorAll('.diff button[data-d]').forEach((x) => x.classList.toggle('on', x === b));
+      }),
+    );
+    title.querySelectorAll<HTMLButtonElement>('.diff button[data-p]').forEach((b) =>
+      click(b, () => {
+        this.game.profile.players = b.dataset.p === '2' ? 2 : 1;
+        this.game.saveProfile();
+        this.syncPlayers();
       }),
     );
     click(title.querySelector('[data-a=new]')!, () => this.game.newGame(this.diff));
@@ -316,8 +328,10 @@ export class UI {
             <p>Waves attack your station. Red arrows show where they come from.</p>
             <p>Wave 5 of every sector is a boss.</p>
             <p><kbd>N</kbd> calls the next wave early for bonus crystals</p>
-            <p><kbd>P</kbd> pause, <kbd>M</kbd> sound</p></div>
+            <p><kbd>P</kbd> pause, <kbd>M</kbd> sound</p>
+            <p><kbd>F</kbd> NOVA when the purple bar is full</p></div>
         </div>
+        <p class="help-coop">Two players: pick "2 players" on the title screen. Player 2 flies with the arrow keys (auto-aim, Right Shift dash, Enter missile, / NOVA) or a game controller (left stick fly, right stick aim and shoot, A dash, B missile, Y NOVA).</p>
         <div class="row"><button class="btn small" data-a="back">Got it</button></div>
       </div>`;
     click(help.querySelector('[data-a=back]')!, () => {
@@ -450,7 +464,15 @@ export class UI {
     (t.querySelector('[data-r=name]') as HTMLInputElement).value = game.profile.name;
     t.querySelectorAll<HTMLElement>('.swatch').forEach((x) => x.classList.toggle('on', x.dataset.paint === game.profile.paint));
     (t.querySelector('[data-a=medals]') as HTMLElement).textContent = `Medals ${game.profile.medals.length}/${MEDALS.length}`;
+    this.syncPlayers();
     t.querySelector('[data-r=best]')!.textContent = game.profile.bestEndless > 0 ? `Best in Endless mode: wave ${game.profile.bestEndless}` : '';
+  }
+
+  private syncPlayers(): void {
+    const t = this.screens.title;
+    const two = this.game.profile.players === 2;
+    t.querySelectorAll<HTMLElement>('.diff button[data-p]').forEach((x) => x.classList.toggle('on', (x.dataset.p === '2') === two));
+    (t.querySelector('[data-r=p2help]') as HTMLElement).style.display = two ? 'block' : 'none';
   }
 
   private showMedals(): void {
@@ -750,6 +772,7 @@ export class UI {
 
     this.radar.update(game, dt);
     this.updateShip(game);
+    this.updateCoop(game);
     this.updateSector(game);
     this.updateBank(game, dt);
     this.updateCards(game);
@@ -805,6 +828,37 @@ export class UI {
     this.set('pw', pw, () => {
       this.power.textContent = pw;
       this.power.className = 'power-chip' + (pw ? ' on' : '') + (s.bubble > 0 && s.overdrive <= 0 ? ' bubble' : '');
+    });
+  }
+
+  /** Player 2's panel and the P1 / P2 tags floating over the ships. */
+  private updateCoop(game: Game): void {
+    const p2 = game.p2;
+    this.set('coop', p2 ? 1 : 0, () => {
+      this.p2Panel.style.display = p2 ? 'block' : 'none';
+      for (const t of this.tags) t.style.display = p2 ? 'block' : 'none';
+      document.body.classList.toggle('coop', !!p2);
+    });
+    if (!p2) return;
+    const hp = Math.max(0, Math.round(p2.hp));
+    this.set('p2hp', hp + (p2.alive ? '' : 'x'), () => {
+      const bar = this.p2Panel.querySelector('.bar') as HTMLElement;
+      (bar.firstChild as HTMLElement).style.transform = `scaleX(${hp / p2.maxHp})`;
+      bar.classList.toggle('low', hp / p2.maxHp < 0.35);
+      (this.p2Panel.querySelector('[data-r=p2gun]') as HTMLElement).textContent = p2.alive ? `${hp}` : 'respawning';
+    });
+    this.set('p2pips', p2.missiles * 100 + p2.missilesMax, () => {
+      this.p2Panel.querySelector('[data-r=p2pips]')!.innerHTML = Array.from({ length: p2.missilesMax }, (_, i) => `<i class="${i < p2.missiles ? 'on' : ''}"></i>`).join('');
+    });
+    game.ships.forEach((s, i) => {
+      const tag = this.tags[i];
+      if (!s.alive) {
+        tag.style.opacity = '0';
+        return;
+      }
+      const p = game.project(s.x, s.z, 2.2);
+      tag.style.opacity = '1';
+      tag.style.transform = `translate(-50%, -100%) translate(${p.x.toFixed(0)}px, ${(p.y - 14).toFixed(0)}px)`;
     });
   }
 
@@ -973,6 +1027,7 @@ export class UI {
     };
     if (game.mode === 'play') {
       if (game.station.alive) place(0, 0, 'station', 'Station');
+      if (game.p2) for (const s of game.ships) if (s.alive) place(s.x, s.z, 'station', s.id === 0 ? 'P1' : 'P2');
       const b = game.events.beacon();
       if (b) place(b.x, b.z, 'gold', game.events.pod ? 'SOS' : 'Comet');
       for (const c of game.pickups.crates) place(c.x, c.z, 'gold', 'Supplies');

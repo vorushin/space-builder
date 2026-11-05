@@ -88,15 +88,26 @@ export class Input {
     this.edges.add(code);
   }
 
-  /** Movement direction on the plane (screen-relative: up = −Z). Length ≤ 1. */
-  move(): V2 {
+  /** Movement direction on the plane (screen-relative: up = −Z). Length ≤ 1. Arrows count unless player 2 owns them. */
+  move(arrows = true): V2 {
     let x = 0, z = 0;
-    if (this.isDown('KeyW', 'ArrowUp')) z -= 1;
-    if (this.isDown('KeyS', 'ArrowDown')) z += 1;
-    if (this.isDown('KeyA', 'ArrowLeft')) x -= 1;
-    if (this.isDown('KeyD', 'ArrowRight')) x += 1;
+    if (this.isDown('KeyW') || (arrows && this.isDown('ArrowUp'))) z -= 1;
+    if (this.isDown('KeyS') || (arrows && this.isDown('ArrowDown'))) z += 1;
+    if (this.isDown('KeyA') || (arrows && this.isDown('ArrowLeft'))) x -= 1;
+    if (this.isDown('KeyD') || (arrows && this.isDown('ArrowRight'))) x += 1;
     x += this.stick.x;
     z += this.stick.z;
+    const l = Math.hypot(x, z);
+    return l > 1 ? { x: x / l, z: z / l } : { x, z };
+  }
+
+  /** Player 2 on the keyboard: the arrow keys. */
+  p2Move(): V2 {
+    let x = 0, z = 0;
+    if (this.isDown('ArrowUp')) z -= 1;
+    if (this.isDown('ArrowDown')) z += 1;
+    if (this.isDown('ArrowLeft')) x -= 1;
+    if (this.isDown('ArrowRight')) x += 1;
     const l = Math.hypot(x, z);
     return l > 1 ? { x: x / l, z: z / l } : { x, z };
   }

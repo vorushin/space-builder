@@ -123,9 +123,10 @@ export class Bolts {
     const arena = BAL.arenaRadius + 25;
     for (const b of this.list) {
       if (!b.alive) continue;
-      if (b.homing > 0 && game.ship.alive) {
+      const prey = b.homing > 0 ? game.nearestShip(b.x, b.z) : null;
+      if (prey) {
         const sp = Math.hypot(b.vx, b.vz);
-        const a = turnToward(Math.atan2(b.vz, b.vx), Math.atan2(game.ship.z - b.z, game.ship.x - b.x), b.homing * dt);
+        const a = turnToward(Math.atan2(b.vz, b.vx), Math.atan2(prey.z - b.z, prey.x - b.x), b.homing * dt);
         b.vx = Math.cos(a) * sp;
         b.vz = Math.sin(a) * sp;
       }
@@ -180,8 +181,8 @@ export class Bolts {
   }
 
   private hitEnemyBolt(b: Bolt, game: Game): void {
-    const ship = game.ship;
-    if (ship.alive) {
+    for (const ship of game.ships) {
+      if (!ship.alive) continue;
       const rr = ship.r + b.r;
       if ((ship.x - b.x) ** 2 + (ship.z - b.z) ** 2 < rr * rr) {
         if (ship.hurt(b.dmg, game)) game.fx.sparks(b.x, b.z, 0xffd0a0, 8, 7, 0.45);

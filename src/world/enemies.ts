@@ -7,6 +7,7 @@ import { leadAim } from '../logic/targeting';
 import type { SpawnOrder } from '../logic/waves';
 import { disposeRig, makeEnemy, type Rig } from '../render/models';
 import type { Hittable } from './types';
+import type { Ship } from './ship';
 
 const rng = new Rng(2024);
 const barGeo = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
@@ -108,10 +109,14 @@ export class Enemy implements Hittable {
     if (this.bar) this.scene.remove(this.bar);
   }
 
+  /** the ship this enemy is after (nearest player) */
+  private prey: Ship | null = null;
+
   update(dt: number, game: Game): void {
     this.t += dt;
     const def = this.def;
-    const ship = game.ship;
+    const ship = game.nearestShip(this.x, this.z) ?? game.ship;
+    this.prey = ship;
     const st = game.station;
     const dShip = ship.alive ? Math.hypot(ship.x - this.x, ship.z - this.z) : Infinity;
     const dSt = Math.hypot(st.x - this.x, st.z - this.z) - st.radius;
@@ -246,7 +251,7 @@ export class Enemy implements Hittable {
     const def = this.def;
     let ax = tx, az = tz;
     if (atShip) {
-      const p = leadAim(this, game.ship, BAL.enemyBoltSpeed);
+      const p = leadAim(this, this.prey ?? game.ship, BAL.enemyBoltSpeed);
       ax = p.x;
       az = p.z;
     }
