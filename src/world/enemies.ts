@@ -89,6 +89,7 @@ export class Enemy implements Hittable {
     if (big) game.hitStop(0.05);
     game.crystals.spawn(this.x, this.z, Math.round(this.def.crystals * game.mods.crystals), this.r, game);
     game.stats.kills++;
+    game.addNova(this.def.crystals * 0.011);
     const chance = this.def.role === 'tank' ? BAL.powerupChanceTank : BAL.powerupChance;
     if (rng.chance(chance)) game.pickups.drop(game, this.x, this.z);
     if (this.def.role === 'splitter' && !silent) {
@@ -233,6 +234,11 @@ export class Enemy implements Hittable {
     }
     if (Math.random() < 0.4) {
       game.fx.particle(this.x - Math.cos(this.heading) * this.r, 0.2, this.z - Math.sin(this.heading) * this.r, 0, 0, 0, def.glow, 0.45 * this.r, 0.25, 1.6, 0);
+    }
+    // badly damaged: smoke and the odd spark
+    if (this.hp < this.maxHp * 0.5 && Math.random() < (this.r > 2 ? 0.5 : 0.22)) {
+      game.fx.particle(this.x + (Math.random() - 0.5) * this.r, 0.5, this.z + (Math.random() - 0.5) * this.r, 0, 2, 0, 0x5a5a62, 0.9 * this.r, 0.9, 0.7, 1);
+      if (Math.random() < 0.1) game.fx.sparks(this.x, this.z, 0xffa040, 2, 4, 0.35, 0.5);
     }
   }
 

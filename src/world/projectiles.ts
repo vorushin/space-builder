@@ -26,6 +26,8 @@ export interface Bolt {
   last: Hittable | null;
   /** turn rate toward the ship (enemy homing orbs) */
   homing: number;
+  /** chance of a double-damage critical hit */
+  crit: number;
 }
 
 export interface FireOpts {
@@ -44,6 +46,7 @@ export interface FireOpts {
   size?: number;
   kind?: BoltKind;
   homing?: number;
+  crit?: number;
 }
 
 const MAX_P = 1400;
@@ -96,6 +99,7 @@ export class Bolts {
     b.alive = true;
     b.last = null;
     b.homing = o.homing ?? 0;
+    b.crit = o.crit ?? 0;
     this.list.push(b);
     return b;
   }
@@ -153,7 +157,13 @@ export class Bolts {
       const rr = t.r + b.r;
       if ((t.x - b.x) ** 2 + (t.z - b.z) ** 2 > rr * rr) continue;
       const ang = Math.atan2(b.vz, b.vx);
-      t.onHit(b.dmg, game, b.x - b.vx * 0.02, b.z - b.vz * 0.02);
+      let dmg = b.dmg;
+      if (b.crit > 0 && t.team === 'enemy' && Math.random() < b.crit) {
+        dmg *= 2;
+        game.fx.text(b.x, b.z, 'CRIT!', 'fx-crit', 0.6, 1.2);
+        game.fx.sparks(b.x, b.z, 0xffd25a, 8, 9, 0.45);
+      }
+      t.onHit(dmg, game, b.x - b.vx * 0.02, b.z - b.vz * 0.02);
       game.fx.spray(b.x, b.z, ang + Math.PI, b.hex, b.kind === 'rail' ? 8 : 4, 9, 0.9);
       if (b.splash > 0) game.splash(b.x, b.z, b.splash, b.dmg * 0.5, t, b.hex);
       if (b.kind === 'sing') {

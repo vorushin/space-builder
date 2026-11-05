@@ -129,6 +129,7 @@ export class AsteroidField {
     if (a.kind === 'rich') drops *= 3;
     game.crystals.spawn(a.x, a.z, drops, a.r);
     game.stats.rocks++;
+    if (++game.profile.rocks >= 1500) game.medal('rock_smasher');
     if (a.kind === 'explosive') {
       game.explode(a.x, a.z, 7 + a.r, 90 * this.hpScale, 'neutral', 0xff6a2a);
     }

@@ -2,6 +2,9 @@ import * as THREE from 'three';
 import { BAL, SECTOR_VALUE } from './config/balance';
 import { GUNS, MAX_GUN_TIER } from './config/guns';
 import { EXPANSIONS, MODULE_BY_KIND, MODULES, type ModuleKind } from './config/modules';
+import { LINES, type Line } from './config/lines';
+import { MEDAL_BY_ID } from './config/medals';
+import { PAINT_BY_ID } from './config/paints';
 import { ENEMY_BY_ID, LAST_SECTOR, SECTORS, type EnemyDef, type SectorDef, type SectorLook } from './config/sectors';
 import type { Audio } from './audio/sfx';
 import type { Input } from './input';
@@ -11,14 +14,15 @@ import { SpatialGrid } from './logic/grid';
 import { moduleUnlocked, ringUnlocked } from './logic/layout';
 import { Rng, type V2 } from './logic/math';
 import { decodeCheckpoint, encodeCheckpoint, SAVE_KEY, type Checkpoint } from './logic/save';
+import { awardMedal, commanderTitle, decodeProfile, encodeProfile, PROFILE_KEY, type Profile } from './logic/profile';
 import { buildEndlessWave, buildWave, type SpawnOrder } from './logic/waves';
 import type { Background } from './render/background';
 import { Fx } from './render/fx';
-import type { PickupKind } from './render/models';
+import { paintShip, type PickupKind } from './render/models';
 import type { Stage } from './render/stage';
 import type { UI } from './ui/ui';
 import { AsteroidField } from './world/asteroids';
-import { Boss } from './world/bosses';
+import { Boss, BossPod } from './world/bosses';
 import { Crystals, type Magnet } from './world/crystals';
 import { Drones } from './world/drones';
 import { Enemy, formation } from './world/enemies';
@@ -53,6 +57,10 @@ export interface Stats {
   bosses: number;
   time: number;
 }
+
+const NOVA_RADIUS = 34;
+const NOVA_SPEED = 46;
+const CINE_TIME = 2.6;
 
 const freshStats = (): Stats => ({ kills: 0, rocks: 0, comets: 0, crystals: 0, modules: 0, bosses: 0, time: 0 });
 
@@ -112,6 +120,18 @@ export class Game {
   private calmT = 0;
   private titleT = 0;
   checkpoint: Checkpoint | null = null;
+  profile: Profile;
+  /** NOVA super meter 0..1 */
+  nova = 0;
+  private novaWave: { x: number; z: number; r: number; hit: Set<Hittable> } | null = null;
+  private novaAnnounced = false;
+  /** boss entrance cinematic */
+  private cine: { t: number; boss: Boss } | null = null;
+  /** one-time lines for this run */
+  private said = new Set<string>();
+  /** the ship got hit during the current wave (Untouchable medal) */
+  shipHit = false;
+  private dangerSaidWave = -1;
   /** seconds left on the current calm (HUD) */
   get calmLeft(): number {
     return this.director && this.director.phase === 'calm' ? Math.max(0, this.director.timer) : 0;
@@ -140,6 +160,8 @@ export class Game {
     this.shipMagnet = { x: 0, z: 0, r: BAL.ship.magnetRadius, k: 1, onCollect: (v, x, z) => this.addCrystals(v, x, z) };
     this.stationMagnet = { x: 0, z: 0, r: 10, k: 1, onCollect: (v, x, z) => this.addCrystals(v, x, z) };
     this.checkpoint = this.loadCheckpoint();
+    this.profile = this.loadProfile();
+    this.applyPaint();
     this.applySector(0);
     this.asteroids.setSector(this.def, 0);
     this.ship.rig.root.visible = false;
@@ -177,6 +199,11 @@ export class Game {
     this.ui.setBuildMode(false);
     this.ui.clearIncoming();
     this.ui.bossBar(null);
+    this.novaWave = null;
+    if (this.cine) {
+      this.cine = null;
+      this.ui.cinematic(false);
+    }
   }
 
   newGame(difficulty: Difficulty): void {
@@ -187,7 +214,22 @@ export class Game {
     this.endlessLevel = 0;
     const cp: Checkpoint = { v: 1, sector: 0, crystals: 0, gunTier: 1, rings: 1, modules: [], sparky: false, difficulty, endless: false, endlessLevel: 0 };
     this.startFromCheckpoint(cp, true);
+    this.sectorIntro();
+  }
+
+  /** Sector title card + ARIA's briefing + any new blueprints. */
+  sectorIntro(): void {
     this.ui.sectorCard(this);
+    if (this.endless) {
+      this.sayAll(LINES.endless);
+      return;
+    }
+    this.sayAll(LINES.sectorBriefing[this.sector] ?? []);
+    const unlocks = [
+      ...MODULES.filter((m) => m.unlockSector === this.sector && this.sector > 0).map((m) => m.title),
+      ...EXPANSIONS.filter((e) => e.unlockSector === this.sector && e.ring > 0).map((e) => e.name),
+    ];
+    if (unlocks.length) this.sayAll(LINES.newModules, { list: unlocks.join(', ') });
   }
 
   /** Continue / retry: rebuild everything from a checkpoint and start that sector. */
@@ -208,6 +250,10 @@ export class Game {
     this.ship.missiles = this.ship.missilesMax;
     this.ship.respawn(this);
     this.ship.iframes = 0;
+    this.nova = 0;
+    this.novaAnnounced = false;
+    this.said.clear();
+    this.ui.comms.clear();
     this.asteroids.setSector(this.def, cp.sector);
     this.makeDirector(fresh);
     this.mode = 'play';
@@ -222,9 +268,10 @@ export class Game {
 
   retrySector(): void {
     const cp = this.checkpoint ?? this.loadCheckpoint();
-    if (cp) this.startFromCheckpoint(cp);
-    else this.newGame(this.difficulty);
-    this.ui.sectorCard(this);
+    if (cp) {
+      this.startFromCheckpoint(cp);
+      this.sectorIntro();
+    } else this.newGame(this.difficulty);
   }
 
   private makeDirector(fresh: boolean): void {
@@ -276,7 +323,7 @@ export class Game {
     this.paused = false;
     this.audio.setPaused(false);
     this.checkpoint = this.loadCheckpoint();
-    this.ship.rig.root.visible = false;
+    this.ship.rig.root.visible = true;
     this.drones.clear();
     this.station.load(this.checkpoint?.rings ?? 2, this.checkpoint?.modules ?? [
       { socket: 0, kind: 'turret', tier: 2 },
@@ -290,6 +337,66 @@ export class Game {
     this.asteroids.setSector(this.def, this.sector);
     this.ui.showTitle(this);
     this.audio.music('title');
+  }
+
+  // ================================================================ profile, talking, medals
+
+  loadProfile(): Profile {
+    try {
+      return decodeProfile(localStorage.getItem(PROFILE_KEY));
+    } catch {
+      return decodeProfile(null);
+    }
+  }
+
+  saveProfile(): void {
+    try {
+      localStorage.setItem(PROFILE_KEY, encodeProfile(this.profile));
+    } catch {
+      /* ignore */
+    }
+  }
+
+  setPaint(id: string): void {
+    if (!PAINT_BY_ID[id]) return;
+    this.profile.paint = id;
+    this.saveProfile();
+    this.applyPaint();
+    this.fx.sparks(this.ship.x, this.ship.z, PAINT_BY_ID[id].accent, 14, 6);
+    this.audio.play('click');
+  }
+
+  private applyPaint(): void {
+    paintShip(this.ship.rig, PAINT_BY_ID[this.profile.paint] ?? PAINT_BY_ID.arctic);
+  }
+
+  get paint() {
+    return PAINT_BY_ID[this.profile.paint] ?? PAINT_BY_ID.arctic;
+  }
+
+  /** Say every line (in order). */
+  sayAll(lines: Line[], vars: Record<string, string> = {}, priority = false): void {
+    this.ui.comms.say(lines, { cmd: commanderTitle(this.profile), ...vars }, priority);
+  }
+
+  /** Say one random line from the list. */
+  sayOne(lines: Line[], vars: Record<string, string> = {}, priority = false): void {
+    if (lines.length) this.sayAll([lines[Math.floor(Math.random() * lines.length)]], vars, priority);
+  }
+
+  /** Say something only once per run. */
+  sayOnce(key: string, lines: Line[], vars: Record<string, string> = {}): void {
+    if (this.said.has(key)) return;
+    this.said.add(key);
+    this.sayAll(lines, vars);
+  }
+
+  medal(id: string): void {
+    if (!awardMedal(this.profile, id)) return;
+    this.saveProfile();
+    const m = MEDAL_BY_ID[id];
+    if (m) this.ui.medalToast(m);
+    this.audio.play('medal');
   }
 
   // ================================================================ queries
@@ -376,6 +483,7 @@ export class Game {
       this.ui.bossIntro(def);
       this.audio.play('bossRoar');
       this.audio.music('boss');
+      this.startCinematic(this.boss);
       return;
     }
     const def = ENEMY_BY_ID[o.enemy];
@@ -451,6 +559,7 @@ export class Game {
     this.gainZ = z;
     this.audio.play('pickup');
     this.ui.bankPulse();
+    if (this.sector === 0 && this.mode === 'play') this.sayOnce('crystals', LINES.firstCrystals);
   }
 
   spend(cost: number): boolean {
@@ -491,7 +600,100 @@ export class Game {
     this.drones.addSparky(this);
     this.ui.banner('SPARKY JOINED YOU!', 'A little robot friend: it zaps enemies and grabs crystals', 'gold', 3.2);
     this.audio.play('jackpot');
-    this.stats.crystals += 0;
+    this.sayAll(LINES.sparkyRescued);
+    this.medal('sparky');
+  }
+
+  // ================================================================ NOVA super
+
+  /** Charge the NOVA meter (kills, boss damage). */
+  addNova(amount: number): void {
+    if (this.mode !== 'play' || amount <= 0) return;
+    this.nova = Math.min(1, this.nova + amount);
+    if (this.nova >= 1 && !this.novaAnnounced) {
+      this.novaAnnounced = true;
+      this.sayAll(LINES.novaReady);
+      this.audio.play('powerup');
+    }
+  }
+
+  releaseNova(): void {
+    const s = this.ship;
+    if (this.nova < 1 || this.mode !== 'play' || this.controlsLocked || this.buildMode || this.paused || !s.alive) {
+      if (this.nova < 1) this.audio.play('denied');
+      return;
+    }
+    this.nova = 0;
+    this.novaAnnounced = false;
+    this.novaWave = { x: s.x, z: s.z, r: 0, hit: new Set() };
+    s.iframes = Math.max(s.iframes, 0.8);
+    this.slowMoT = Math.max(this.slowMoT, 0.45);
+    this.fx.screen('rgba(200,170,255,1)', 0.45);
+    this.fx.flash(s.x, s.z, 12, 0xe9d5ff, 0.35, 1, 1.8);
+    this.fx.ring(s.x, s.z, NOVA_RADIUS, 0xc084fc, NOVA_RADIUS / NOVA_SPEED + 0.15, 3, 0.5);
+    this.fx.ring(s.x, s.z, NOVA_RADIUS * 0.8, 0xffffff, NOVA_RADIUS / NOVA_SPEED, 2.4, 0.5);
+    for (let i = 0; i < 110; i++) {
+      const a = Math.random() * Math.PI * 2, sp = 32 + Math.random() * 22;
+      this.fx.particle(s.x, 0.5, s.z, Math.cos(a) * sp, Math.random() * 5, Math.sin(a) * sp, i % 4 ? 0xb07cff : 0xffffff, 0.7 + Math.random() * 0.8, 0.75, 2, 1.2);
+    }
+    this.stage.shake(1.1);
+    this.audio.play('nova');
+    this.medal('nova');
+  }
+
+  private updateNova(dt: number): void {
+    const w = this.novaWave;
+    if (!w) return;
+    w.r += NOVA_SPEED * dt;
+    for (const t of this.grid.query(w.x, w.z, w.r, [])) {
+      if (!t.alive || w.hit.has(t)) continue;
+      if (Math.hypot(t.x - w.x, t.z - w.z) - t.r > w.r) continue;
+      w.hit.add(t);
+      let dmg: number;
+      if (t instanceof Boss) dmg = t.maxHp * 0.05;
+      else if (t instanceof BossPod) dmg = t.boss.maxHp * 0.05;
+      else if (t.team === 'enemy') dmg = 450 * (1 + this.sector * 1.6);
+      else dmg = 120 * this.def.rockHp;
+      t.onHit(dmg, this, w.x, w.z);
+      this.fx.sparks(t.x, t.z, 0xe9d5ff, 6, 8, 0.5);
+    }
+    // the wave front wipes out enemy bullets
+    for (const b of this.bolts.list) {
+      if (b.alive && b.team === 'enemy' && (b.x - w.x) ** 2 + (b.z - w.z) ** 2 < w.r * w.r) {
+        b.alive = false;
+        this.fx.sparks(b.x, b.z, 0xe9d5ff, 2, 4, 0.4);
+      }
+    }
+    if (w.r >= NOVA_RADIUS) this.novaWave = null;
+  }
+
+  // ================================================================ boss entrance
+
+  private startCinematic(boss: Boss): void {
+    this.setBuild(false);
+    this.cine = { t: 0, boss };
+    this.controlsLocked = true;
+    this.ceaseFire = true;
+    this.ui.cinematic(true, boss.def);
+    this.sayAll(LINES.bossArrive[boss.id] ?? [], {}, true);
+  }
+
+  private updateCinematic(realDt: number): void {
+    const c = this.cine;
+    if (!c) return;
+    c.t += realDt;
+    if (c.t < CINE_TIME) return;
+    this.cine = null;
+    this.ui.cinematic(false);
+    if (this.mode === 'play') {
+      this.controlsLocked = false;
+      this.ceaseFire = false;
+    }
+  }
+
+  /** A boss dropped below half health. */
+  onBossHalf(boss: Boss): void {
+    this.sayAll(LINES.bossHalf[boss.id] ?? [], {}, true);
   }
 
   bossDefeated(boss: Boss): void {
@@ -503,6 +705,8 @@ export class Game {
     this.ui.bossBar(null);
     this.ui.banner(`${boss.def.name.toUpperCase()} DEFEATED!`, 'You did it!', 'gold', 3);
     this.audio.play('bossDie');
+    this.sayAll(LINES.bossDefeated, { boss: boss.def.name }, true);
+    this.medal('boss_' + boss.id);
     this.fx.screen('rgba(255,255,255,1)', 0.7);
     this.stage.shake(1.2);
     for (let i = 0; i < 9; i++) {
@@ -548,11 +752,29 @@ export class Game {
       this.station.setVisible(false);
       this.fx.explosion(0, 0, 8, 0xffffff, 0xc5cfda);
     });
+    this.saveProfile();
     this.later(3.6, () => {
       this.mode = 'over';
       this.audio.play('gameover');
       this.ui.showGameOver(this);
     });
+  }
+
+  private alarmT = 0;
+
+  private updateAlarms(realDt: number): void {
+    if (this.mode !== 'play' || !this.director) return;
+    const st = this.station;
+    if (st.alive && st.hp < st.maxHp * 0.4 && this.dangerSaidWave !== this.director.wave) {
+      this.dangerSaidWave = this.director.wave;
+      this.sayOne(LINES.stationDanger);
+    }
+    const s = this.ship;
+    this.alarmT -= realDt;
+    if (s.alive && s.hp < s.maxHp * 0.35 && this.alarmT <= 0) {
+      this.alarmT = 1.6;
+      this.audio.play('alarm');
+    }
   }
 
   private later(t: number, fn: () => void): void {
@@ -575,6 +797,8 @@ export class Game {
     this.ui.banner(g.name.toUpperCase() + '!', `Ship guns level ${this.ship.gunTier}`, 'info', 1.6);
     this.audio.play('upgrade');
     this.ui.hint('guns');
+    if (this.ship.gunTier >= 4) this.medal('sharp_shooter');
+    if (this.ship.gunTier >= MAX_GUN_TIER) this.medal('singularity');
   }
 
   selectModule(kind: ModuleKind): void {
@@ -616,6 +840,9 @@ export class Game {
     this.ui.toast(`${MODULE_BY_KIND[kind].title} built!`, 'good');
     this.ui.hint('build');
     this.placing = null;
+    this.sayOnce('build', LINES.firstBuild);
+    this.medal('first_build');
+    if (this.station.modules.size >= 18) this.medal('full_house');
     return true;
   }
 
@@ -662,6 +889,7 @@ export class Game {
     this.ui.banner(`${EXPANSIONS[next].name.toUpperCase()} BUILT!`, `${this.station.sockets.length} sockets for modules`, 'good', 2.4);
     this.audio.play('expand');
     this.stage.shake(0.4);
+    if (this.station.rings >= 3) this.medal('mega');
   }
 
   setBuild(on: boolean): void {
@@ -712,9 +940,12 @@ export class Game {
           this.ui.warning(this, ev.wave, ev.boss, ev.dirs, ev.duration, ev.bossId);
           this.audio.play('siren');
           this.setBuild(false);
+          if (ev.boss) this.sayAll(LINES.bossWarning);
+          else this.sayOnce('warning', LINES.firstWarning);
           break;
         case 'waveStart':
           this.audio.music(ev.boss ? 'boss' : 'battle');
+          this.shipHit = false;
           break;
         case 'spawn':
           this.spawnOrder(ev.order);
@@ -730,9 +961,17 @@ export class Game {
           this.ui.clearIncoming();
           this.audio.play('waveClear');
           this.ceaseFire = false;
+          if (!this.shipHit) this.medal('untouchable');
           if (this.endless) {
             this.endlessLevel++;
             this.saveCheckpoint();
+            if (this.endlessLevel > this.profile.bestEndless) this.profile.bestEndless = this.endlessLevel;
+            if (this.endlessLevel >= 10) this.medal('endless_10');
+          }
+          this.saveProfile();
+          if (!this.director?.boss) {
+            if (Math.random() < 0.6) this.sayOne(LINES.waveCleared);
+            if (this.sparky && Math.random() < 0.35) this.sayOne(LINES.sparkyCheer);
           }
           break;
         }
@@ -748,6 +987,8 @@ export class Game {
       this.mode = 'victory';
       this.controlsLocked = true;
       this.audio.music('victory');
+      this.sayAll(LINES.victory);
+      this.saveProfile();
       this.later(1.2, () => this.ui.showVictory(this));
       return;
     }
@@ -770,6 +1011,7 @@ export class Game {
     this.ui.enterPlay(this);
     this.ui.banner('ENDLESS MODE', 'How long can your station survive?', 'gold', 3);
     this.audio.music('battle');
+    this.sayAll(LINES.endless);
   }
 
   private updateHyperspace(realDt: number): void {
@@ -802,7 +1044,7 @@ export class Game {
       this.mode = 'play';
       this.controlsLocked = false;
       this.hyperT = -1;
-      this.ui.sectorCard(this);
+      this.sectorIntro();
       this.audio.music('calm');
     }
   }
@@ -834,6 +1076,12 @@ export class Game {
       this.stage.follow(Math.sin(this.titleT * 0.1) * 4, 6 + Math.cos(this.titleT * 0.13) * 2, realDt);
       this.station.update(realDt, this);
       this.asteroids.update(realDt * 0.5, this);
+      // the player's ship idles next to the station so the hangar paint shows
+      const r = this.ship.rig;
+      r.root.position.set(15, 1.2 + Math.sin(this.titleT * 1.4) * 0.3, 7);
+      r.root.rotation.y = -(-Math.PI / 2 - 0.5) + Math.sin(this.titleT * 0.5) * 0.25;
+      r.body.rotation.x = Math.sin(this.titleT * 0.9) * 0.15;
+      for (const f of r.flames) f.scale.set(0.55 + Math.random() * 0.2, 1, 1);
       this.fx.update(realDt, realDt);
       this.finishFrame(realDt);
       return;
@@ -864,6 +1112,7 @@ export class Game {
       ts = 0.3;
     }
     if (this.buildMode) ts = Math.min(ts, 0.22);
+    if (this.cine) ts = Math.min(ts, 0.3);
     const dt = realDt * ts;
     this.time += dt;
     if (this.mode === 'play') this.stats.time += realDt;
@@ -916,6 +1165,9 @@ export class Game {
     this.pickups.update(dt, this);
     this.events.update(dt, this);
     this.updateVortexes(dt);
+    this.updateNova(dt);
+    this.updateCinematic(realDt);
+    this.updateAlarms(realDt);
     this.enemies = this.enemies.filter((e) => {
       if (!e.alive) e.dispose();
       return e.alive;
@@ -981,6 +1233,11 @@ export class Game {
   private updateCamera(realDt: number): void {
     const s = this.ship;
     const st = this.stage;
+    if (this.cine) {
+      st.distGoal = 30;
+      st.follow(this.cine.boss.x, this.cine.boss.z, realDt);
+      return;
+    }
     if (this.buildMode) {
       st.distGoal = 24 + this.station.rings * 10;
       st.follow(this.station.x, this.station.z + 2, realDt);
@@ -1023,6 +1280,7 @@ export class Game {
     for (const m of MODULES) if (input.pressed('Digit' + m.hotkey, 'Numpad' + m.hotkey)) this.selectModule(m.kind);
     if (input.pressed('KeyX')) this.expandStation();
     if (input.pressed('KeyN')) this.callWave();
+    if (input.pressed('KeyF')) this.releaseNova();
     if (this.dev) {
       if (input.pressed('Digit8')) this.bank += 500 * SECTOR_VALUE[this.sector];
       if (input.pressed('Digit9')) this.devClearWave();

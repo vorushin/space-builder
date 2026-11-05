@@ -122,7 +122,7 @@ export const SECTORS: SectorDef[] = [
       { dirs: 2, groups: [{ enemy: 'advanced_drone', count: 3, delay: 0 }, { enemy: 'training_drone', count: 6, delay: 3 }, { enemy: 'advanced_drone', count: 2, delay: 11 }] },
       { dirs: 1, boss: true, groups: [{ enemy: 'training_drone', count: 4, delay: 10 }, { enemy: 'training_drone', count: 4, delay: 25 }] },
     ],
-    boss: { id: 'override', name: 'Protocol Override', title: 'The rogue training computer', hp: 6000, radius: 3.6, color: 0xff4040, glow: 0xff2020, dmg: 6, crystals: 70 },
+    boss: { id: 'override', name: 'Protocol Override', title: 'The rogue training computer', hp: 8000, radius: 3.6, color: 0xff4040, glow: 0xff2020, dmg: 6, crystals: 70 },
     asteroids: 30,
     rockHp: 1,
     richChance: 0.16,

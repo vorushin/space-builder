@@ -7,13 +7,13 @@ export type SfxName =
   | 'hurt' | 'dash' | 'missile' | 'denied' | 'shieldHit' | 'shieldDown' | 'stationHit' | 'zap' | 'blink'
   | 'clink' | 'bossRoar' | 'bossShot' | 'dashBoss' | 'charge' | 'laserBeam' | 'jackpot' | 'event' | 'build'
   | 'upgrade' | 'sell' | 'expand' | 'siren' | 'waveClear' | 'powerup' | 'hyper' | 'click' | 'gameover'
-  | 'sectorClear' | 'bossDie' | 'vortex';
+  | 'sectorClear' | 'bossDie' | 'vortex' | 'medal' | 'nova' | 'alarm' | 'talk';
 
 export type MusicMode = 'none' | 'title' | 'calm' | 'battle' | 'boss' | 'victory';
 
 const THROTTLE: Partial<Record<SfxName, number>> = {
   laser: 0.05, turret: 0.07, enemyShot: 0.08, boom: 0.05, crack: 0.04, rockBreak: 0.06, pickup: 0.035,
-  shieldHit: 0.06, stationHit: 0.1, zap: 0.06, bossShot: 0.1, clink: 0.2, hurt: 0.15, bigBoom: 0.08,
+  shieldHit: 0.06, stationHit: 0.1, zap: 0.06, bossShot: 0.1, clink: 0.2, hurt: 0.15, bigBoom: 0.08, talk: 0.05,
 };
 
 const MUTE_KEY = 'space-builder-3d.muted';
@@ -295,6 +295,26 @@ export class Audio {
       case 'vortex':
         this.tone(240, 0.7, 'sine', 0.1, 50);
         break;
+      case 'medal':
+        this.arp([76, 79, 84, 88, 91, 96], 0.07, 'triangle', 0.07, 0.35);
+        this.arp([64, 67, 72], 0.14, 'square', 0.025, 0.4);
+        break;
+      case 'nova':
+        this.tone(55, 1.3, 'sine', 0.45, 24);
+        this.hiss(1.4, 0.3, 4000, 120);
+        this.tone(220, 0.9, 'sawtooth', 0.08, 880, 0, 0.02);
+        this.arp([60, 67, 72, 79, 84], 0.06, 'triangle', 0.06, 0.6);
+        break;
+      case 'alarm':
+        this.tone(880, 0.09, 'square', 0.025);
+        this.tone(660, 0.12, 'square', 0.025, 0, 0.11);
+        break;
+      case 'talk': {
+        // param: speaker voice (0 = ARIA, 1 = Sparky, 2 = boss)
+        const base = param === 1 ? 980 : param === 2 ? 150 : 520;
+        this.tone(base * (0.9 + Math.random() * 0.25), 0.045, param === 2 ? 'sawtooth' : 'square', param === 2 ? 0.03 : 0.018);
+        break;
+      }
     }
   }
 

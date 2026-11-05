@@ -19,6 +19,7 @@ Play it: https://space-builder-one.vercel.app. The original 2D game is still the
 | Hold left button | shoot |
 | Right-click or Q | homing missile |
 | Space | dash (dodges bullets) |
+| F | NOVA super-blast (when the purple meter is full) |
 | 1 | upgrade ship guns |
 | 2–7 | pick a station module, then click a glowing socket |
 | B | build mode: click a module to upgrade or sell it |
@@ -29,6 +30,10 @@ Play it: https://space-builder-one.vercel.app. The original 2D game is still the
 
 On a tablet you get a touch stick on the left. The ship aims and fires by itself, and
 the build cards are tappable.
+
+On the title screen, type your commander name and pick a paint job for your ship. ARIA,
+the station computer, will call you by name. There are 15 medals to collect, and the title
+screen shows your best Endless wave.
 
 ## Running it
 

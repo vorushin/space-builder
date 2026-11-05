@@ -45,6 +45,7 @@ class Comet implements Hittable {
       game.ui.toast('Golden comet smashed! Crystals everywhere!', 'gold');
       game.audio.play('jackpot');
       game.stats.comets++;
+      game.medal('comet');
     }
   }
 }

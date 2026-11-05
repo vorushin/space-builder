@@ -29,6 +29,7 @@ export class BossPod implements Hittable {
     if (!this.alive) return;
     this.hp -= dmg;
     this.boss.flash = 0.06;
+    game.addNova((dmg / this.boss.maxHp) * 0.5);
     if (this.hp <= 0) {
       this.alive = false;
       this.obj.visible = false;
@@ -98,6 +99,7 @@ export class Boss implements Hittable {
   private immuneMsg = 0;
   private dashes = 0;
   private enraged = false;
+  private halfSaid = false;
   readonly id: BossDef['id'];
 
   constructor(readonly def: BossDef, x: number, z: number, hpScale: number, private scene: THREE.Scene) {
@@ -139,6 +141,7 @@ export class Boss implements Hittable {
     }
     this.hp -= dmg;
     this.flash = 0.06;
+    game.addNova((dmg / this.maxHp) * 0.5);
     if (this.hp <= 0) {
       this.hp = 0;
       this.alive = false;
@@ -238,6 +241,15 @@ export class Boss implements Hittable {
       const c = this.rig.parts.core;
       const s = (this.immune ? 1 : 1.35) * (1 + Math.sin(this.t * 6) * 0.08);
       c.scale.setScalar(s);
+    }
+    if (!this.halfSaid && this.frac < 0.5) {
+      this.halfSaid = true;
+      game.onBossHalf(this);
+    }
+    if (this.frac < 0.5 && Math.random() < 0.6) {
+      const a = Math.random() * Math.PI * 2, rr = Math.random() * this.r;
+      game.fx.particle(this.x + Math.cos(a) * rr, 1, this.z + Math.sin(a) * rr, 0, 2.5, 0, 0x55555e, 2.2, 1.2, 0.7, 0.8);
+      if (Math.random() < 0.15) game.fx.sparks(this.x + Math.cos(a) * rr, this.z + Math.sin(a) * rr, 0xffa040, 4, 6, 0.4, 0.8);
     }
     // engine glow particles
     if (Math.random() < 0.6) {

@@ -19,6 +19,9 @@ export class Input {
 
   constructor(private canvas: HTMLCanvasElement) {
     window.addEventListener('keydown', (e) => {
+      // typing in a text field (the commander name) is not a game key
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
       if (e.code === 'Space' || e.code === 'Tab' || e.code.startsWith('Arrow')) e.preventDefault();
       if (!e.repeat) this.edges.add(e.code);
       this.down.add(e.code);

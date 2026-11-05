@@ -63,13 +63,22 @@ export interface ShipRig extends Rig {
   flames: THREE.Mesh[];
   guns: THREE.Group;
   bubble: THREE.Mesh;
+  /** paintable materials (own copies: never shared with the station) */
+  accentMat: THREE.MeshStandardMaterial;
+  glassMat: THREE.MeshStandardMaterial;
+  flameMat: THREE.MeshBasicMaterial;
 }
 
 export function makeShip(): ShipRig {
   const r = rig() as ShipRig;
   const white = flashMat(r, 0xe6edf5, 0.4, 0.45);
-  const blue = hull(0x2f7dff, { metal: 0.5, rough: 0.4 });
+  const blue = hull(0x2f7dff, { metal: 0.5, rough: 0.4, unique: true });
   const dark = hull(0x2a3340, { metal: 0.6, rough: 0.5 });
+  const canopyMat = new THREE.MeshStandardMaterial({ color: 0x4fd8ff, emissive: 0x4fd8ff, emissiveIntensity: 0.7, metalness: 0.6, roughness: 0.15, flatShading: true });
+  const flameMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0x6fe0ff).multiplyScalar(2.6), transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false });
+  r.accentMat = blue;
+  r.glassMat = canopyMat;
+  r.flameMat = flameMat;
 
   const fus = new THREE.ConeGeometry(0.46, 2.4, 6).rotateZ(-Math.PI / 2).scale(1, 0.6, 1);
   r.body.add(M(fus, white, 0.25, 0.05, 0));
@@ -88,14 +97,14 @@ export function makeShip(): ShipRig {
   f2.rotation.x = 0.35;
   r.body.add(f1, f2);
   const canopy = new THREE.SphereGeometry(0.3, 12, 8).scale(1.6, 0.75, 0.85);
-  r.body.add(M(canopy, glass(0x4fd8ff, 0.7), 0.35, 0.22, 0));
+  r.body.add(M(canopy, canopyMat, 0.35, 0.22, 0));
 
   r.flames = [];
   for (const z of [-0.3, 0.3]) {
     r.body.add(M(new THREE.CylinderGeometry(0.17, 0.21, 0.3, 8).rotateZ(Math.PI / 2), dark, -1.35, 0, z));
     const flameGeo = new THREE.ConeGeometry(0.17, 1, 8).rotateZ(Math.PI / 2);
     flameGeo.translate(-0.5, 0, 0);
-    const fl = M(flameGeo, additive(0x6fe0ff, 2.6, 0.95), -1.5, 0, z);
+    const fl = M(flameGeo, flameMat, -1.5, 0, z);
     r.flames.push(fl);
     r.body.add(fl);
   }
@@ -106,6 +115,15 @@ export function makeShip(): ShipRig {
   r.bubble.visible = false;
   r.root.add(r.bubble);
   return r;
+}
+
+/** Recolour the ship for a hangar paint job. */
+export function paintShip(r: ShipRig, p: { hull: number; accent: number; glass: number; flame: number }): void {
+  r.mats[0].color.set(p.hull);
+  r.accentMat.color.set(p.accent);
+  r.glassMat.color.set(p.glass);
+  r.glassMat.emissive.set(p.glass);
+  r.flameMat.color.set(p.flame).multiplyScalar(2.6);
 }
 
 const POD_SPOTS: [number, number][][] = [

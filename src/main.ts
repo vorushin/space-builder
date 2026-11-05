@@ -16,6 +16,7 @@ const audio = new Audio();
 const input = new Input(stage.renderer.domElement);
 const game = new Game(stage, bg, ui, audio, input, uiRoot);
 ui.bind(game);
+ui.comms.onBlip = (who) => audio.play('talk', who === 'aria' ? 0 : who === 'sparky' ? 1 : 2);
 game.toTitle();
 
 declare global {

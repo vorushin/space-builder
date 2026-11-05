@@ -60,12 +60,16 @@ src/
     guns.ts          the 10 ship gun tiers (Robert's names) and their prices
     modules.ts       the 6 station modules × 3 tiers, prices, unlock sectors; expansions
     sectors.ts       4 sectors: look (colours, planet), enemies, waves, boss
+    lines.ts         everything ARIA, Sparky and the bosses say ({cmd} = "Commander <name>")
+    medals.ts        the 15 medals (awarded from game code with game.medal(id))
+    paints.ts        ship paint jobs for the title-screen hangar
   logic/             pure and unit-tested
     director.ts      calm → warning → wave → cleared → … → sectorClear
     waves.ts         wave config → timed spawn orders (directions, counts, endless)
     economy.ts       costs, sell value, difficulty modifiers
     layout.ts        station sockets per ring, unlock rules
     save.ts          checkpoint encode/decode with validation
+    profile.ts       player profile (name, paint, medals, best endless, lifetime rocks)
     grid.ts, targeting.ts, math.ts
   world/             entities (each owns its meshes)
     ship.ts, station.ts (+ module behaviours), enemies.ts, bosses.ts, asteroids.ts,
@@ -75,11 +79,24 @@ src/
                      nebula, planet, hyperspace streaks), models.ts, fx.ts (particles,
                      debris, rings, lightning/beam segments, floating text), materials.ts
   ui/                ui.ts (HUD, build cards, popups, banners, hints, indicators,
-                     screens, touch) + style.css
+                     screens, touch, hangar, medals, boss cinematic) + style.css,
+                     comms.ts (talking characters), radar.ts (minimap)
   audio/sfx.ts       procedural SFX + tiny music sequencer (calm/battle/boss)
   dev/bot.ts         autopilot for balance runs (?dev&bot&speed=N; ?dev&bot=weak plays sloppier)
 public/classic/      the original 2D game, untouched
 ```
+
+## Session 2 features (see docs/superpowers/specs/…-session2-design.md)
+
+- **Comms:** `game.sayAll/sayOne/sayOnce(LINES.x)` queue typed lines with a portrait.
+  Boss lines pass `priority` and jump the queue.
+- **NOVA:** `game.nova` (0..1) fills from kills (`addNova` in `Enemy.die`) and boss damage.
+  `releaseNova()` (F key, HUD button, touch button) sends a shockwave that hits each
+  target once, deletes enemy bolts, and does capped boss damage (5% of max HP).
+- **Boss cinematic:** `startCinematic` runs for 2.6 s with letterbox bars, 0.3× time, the
+  camera on the boss, controls locked and enemies holding fire.
+- **Profile** (`localStorage space-builder-3d.profile`): `game.profile` and `saveProfile()`.
+  It is separate from the run checkpoint.
 
 ## Common changes
 

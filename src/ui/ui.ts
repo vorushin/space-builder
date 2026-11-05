@@ -7,6 +7,11 @@ import { expansionCost, gunUpgradeCost, moduleCost, sellValue, type Difficulty }
 import { moduleUnlocked, ringUnlocked } from '../logic/layout';
 import { isTouch } from '../render/stage';
 import type { Boss } from '../world/bosses';
+import { MEDALS, type MedalDef } from '../config/medals';
+import { PAINTS } from '../config/paints';
+import { cleanName, NAME_MAX } from '../logic/profile';
+import { Comms } from './comms';
+import { Radar } from './radar';
 
 const HINT_KEY = 'space-builder-3d.hints';
 
@@ -114,6 +119,13 @@ export class UI {
   private fpsT = 0;
   private frames = 0;
   private fps = 0;
+  readonly comms: Comms;
+  readonly radar: Radar;
+  private nova = h('div', 'nova', '<span>NOVA</span><div class="bar"><i></i></div><kbd>F</kbd>');
+  private novaBtn = h('button', 'nova-btn', 'Fire!');
+  private letterbox = h('div', 'letterbox');
+  private bossCard = h('div', 'boss-card');
+  private vignette = h('div', 'vignette');
 
   constructor(private root: HTMLElement) {
     try {
@@ -122,7 +134,9 @@ export class UI {
       /* ignore */
     }
     this.buildHud();
-    root.append(this.hud, this.bannerEl, this.toasts, this.sectorCardEl, this.devEl);
+    root.append(this.vignette, this.hud, this.letterbox, this.bossCard, this.bannerEl, this.toasts, this.sectorCardEl, this.devEl);
+    this.comms = new Comms(root);
+    this.radar = new Radar(this.hud);
     this.buildScreens();
     if (isTouch) document.body.classList.add('touch-mode');
   }
@@ -154,7 +168,9 @@ export class UI {
     hullLbl.append(this.hullTxt);
     const ammo = h('div', 'ammo', '<span>Missiles</span>');
     ammo.append(this.pips, this.dash);
-    ship.append(this.gunName, hullLbl, this.hull, ammo, this.power);
+    this.nova.append(this.novaBtn);
+    tap(this.novaBtn, () => this.game.releaseNova());
+    ship.append(this.gunName, hullLbl, this.hull, ammo, this.nova, this.power);
 
     const sector = h('div', 'panel sector-panel');
     sector.append(this.sectorName, this.waves, this.nextWave);
@@ -216,12 +232,17 @@ export class UI {
       <div class="title-wrap">
         <h1 class="logo">SPACE BUILDER<small>3D</small></h1>
         <p class="tagline">Mine asteroids, build a giant space station, and stop the alien fleet in four sectors of space.</p>
+        <div class="hangar">
+          <label>Your name <input data-r="name" maxlength="${NAME_MAX}" placeholder="Commander" autocomplete="off" spellcheck="false" /></label>
+          <label>Ship paint <span class="swatches" data-r="swatches"></span></label>
+        </div>
         <div class="menu">
           <div class="diff"><button data-d="easy">Easy</button><button data-d="normal" class="on">Normal</button></div>
           <button class="btn primary" data-a="new">New game</button>
           <button class="btn" data-a="continue">Continue</button>
-          <button class="btn" data-a="help" style="--c:#7c8db0">How to play</button>
+          <div class="row-btns"><button class="btn" data-a="help" style="--c:#7c8db0">How to play</button><button class="btn" data-a="medals" style="--c:#b7791f">Medals</button></div>
         </div>
+        <div class="best" data-r="best"></div>
         <div class="links"><a href="classic/index.html" target="_self">Play the classic 2D version</a></div>
       </div>`;
     title.querySelectorAll<HTMLButtonElement>('.diff button').forEach((b) =>
@@ -235,10 +256,44 @@ export class UI {
       const cp = this.game.loadCheckpoint();
       if (cp) {
         this.game.startFromCheckpoint(cp);
-        this.sectorCard(this.game);
+        this.game.sectorIntro();
       }
     });
     click(title.querySelector('[data-a=help]')!, () => this.showHelp('title'));
+    click(title.querySelector('[data-a=medals]')!, () => this.showMedals());
+    const nameIn = title.querySelector('[data-r=name]') as HTMLInputElement;
+    nameIn.addEventListener('input', () => {
+      this.game.profile.name = cleanName(nameIn.value);
+      this.game.saveProfile();
+    });
+    nameIn.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') nameIn.blur();
+    });
+    const sw = title.querySelector('[data-r=swatches]')!;
+    for (const p of PAINTS) {
+      const b = h('button', 'swatch');
+      b.style.background = `linear-gradient(135deg, #${p.hull.toString(16).padStart(6, '0')} 55%, #${p.accent.toString(16).padStart(6, '0')} 55%)`;
+      b.title = p.name;
+      b.dataset.paint = p.id;
+      click(b, () => {
+        this.game.setPaint(p.id);
+        sw.querySelectorAll('.swatch').forEach((x) => x.classList.toggle('on', x === b));
+      });
+      sw.append(b);
+    }
+
+    // medals
+    const medals = mk('medals');
+    medals.innerHTML = `
+      <div class="panel card-screen" style="max-width:760px">
+        <h2 data-r="mtitle">Medals</h2>
+        <div class="medal-grid" data-r="grid"></div>
+        <div class="row"><button class="btn small" data-a="back">Back</button></div>
+      </div>`;
+    click(medals.querySelector('[data-a=back]')!, () => {
+      this.screens.medals.classList.remove('show');
+      this.screens.title.classList.add('show');
+    });
 
     // help
     const help = mk('help');
@@ -366,7 +421,9 @@ export class UI {
     tap(missile, () => game.input.press('KeyQ'));
     const dash = h('div', 'tbtn dashb', '💨');
     tap(dash, () => game.input.press('Space'));
-    t.append(zone, missile, dash);
+    const novaB = h('div', 'tbtn novab', '💥');
+    tap(novaB, () => game.releaseNova());
+    t.append(zone, missile, dash, novaB);
     this.hud.prepend(t);
     game.input.touchActive = true;
   }
@@ -387,7 +444,42 @@ export class UI {
     cont.style.display = cp ? '' : 'none';
     if (cp) cont.innerHTML = `Continue<span class="sub">${cp.endless ? 'Endless mode' : `Sector ${cp.sector + 1}: ${SECTORS[cp.sector].name}`}</span>`;
     this.bossbar.classList.remove('show');
-    document.body.classList.remove('building');
+    document.body.classList.remove('building', 'cinematic', 'lowhp', 'nova-ready');
+    this.comms.clear();
+    const t = this.screens.title;
+    (t.querySelector('[data-r=name]') as HTMLInputElement).value = game.profile.name;
+    t.querySelectorAll<HTMLElement>('.swatch').forEach((x) => x.classList.toggle('on', x.dataset.paint === game.profile.paint));
+    (t.querySelector('[data-a=medals]') as HTMLElement).textContent = `Medals ${game.profile.medals.length}/${MEDALS.length}`;
+    t.querySelector('[data-r=best]')!.textContent = game.profile.bestEndless > 0 ? `Best in Endless mode: wave ${game.profile.bestEndless}` : '';
+  }
+
+  private showMedals(): void {
+    const p = this.game.profile;
+    const scr = this.screens.medals;
+    scr.querySelector('[data-r=mtitle]')!.textContent = `Medals ${p.medals.length} of ${MEDALS.length}`;
+    scr.querySelector('[data-r=grid]')!.innerHTML = MEDALS.map((m) => {
+      const got = p.medals.includes(m.id);
+      return `<div class="medal${got ? ' got' : ''}"><div class="mi">${m.icon}</div><div><b>${got ? '✓ ' : ''}${m.name}</b><span>${m.desc}</span></div></div>`;
+    }).join('');
+    this.hideScreens();
+    scr.classList.add('show');
+  }
+
+  medalToast(m: MedalDef): void {
+    const t = h('div', 'medal-toast', `<div class="mi">${m.icon}</div><div><div class="mt">Medal earned!</div><div class="mn"></div></div>`);
+    t.querySelector('.mn')!.textContent = m.name;
+    this.root.append(t);
+    setTimeout(() => t.remove(), 3500);
+  }
+
+  /** Boss entrance: letterbox bars + name card. */
+  cinematic(on: boolean, def?: BossDef): void {
+    document.body.classList.toggle('cinematic', on);
+    if (on && def) {
+      this.bossCard.innerHTML = `<div class="warn">⚠ Boss approaching ⚠</div><h1></h1><p></p>`;
+      this.bossCard.querySelector('h1')!.textContent = def.name;
+      this.bossCard.querySelector('p')!.textContent = def.title;
+    }
   }
 
   private showHelp(from: 'title' | 'pause'): void {
@@ -490,7 +582,6 @@ export class UI {
   }
 
   bossIntro(def: BossDef): void {
-    this.showBanner(def.name.toUpperCase(), def.title, 'boss', 3.2);
     this.bossbar.classList.add('show');
     (this.bossbar.querySelector('.bname') as HTMLElement).textContent = def.name;
   }
@@ -516,6 +607,7 @@ export class UI {
     if (boss) this.banner('⚠ BOSS INCOMING ⚠', `${bossName} is coming!`, 'bad', duration);
     else this.banner(game.endless ? `WAVE ${game.endlessLevel + 1}` : `WAVE ${wave + 1} INCOMING`, dirs.length > 1 ? `From ${dirs.length} sides: follow the red arrows!` : 'Follow the red arrow!', 'bad', 2.4);
     for (const d of this.incoming) d.el.remove();
+    this.radar.warn(dirs, duration + 4);
     this.incoming = dirs.map((dir) => {
       const el = h('div', 'incoming' + (boss ? ' boss' : ''), `<i></i><div>${boss ? 'BOSS' : 'Incoming'}</div>`);
       this.hud.append(el);
@@ -526,6 +618,7 @@ export class UI {
   clearIncoming(): void {
     for (const d of this.incoming) d.el.remove();
     this.incoming = [];
+    this.radar.clearWarn();
   }
 
   sectorCard(game: Game): void {
@@ -652,8 +745,10 @@ export class UI {
       this.sectorCardT -= dt;
       if (this.sectorCardT <= 0) this.sectorCardEl.classList.remove('show');
     }
+    this.comms.update(dt);
     if (game.mode === 'title') return;
 
+    this.radar.update(game, dt);
     this.updateShip(game);
     this.updateSector(game);
     this.updateBank(game, dt);
@@ -697,6 +792,15 @@ export class UI {
       this.pips.innerHTML = Array.from({ length: s.missilesMax }, (_, i) => `<i class="${i < s.missiles ? 'on' : ''}"></i>`).join('');
     });
     this.set('dash', s.dashCd > 0 ? 1 : 0, () => this.dash.classList.toggle('cooling', s.dashCd > 0));
+    const nv = Math.round(game.nova * 100);
+    this.set('nova', nv, () => {
+      (this.nova.querySelector('.bar > i') as HTMLElement).style.transform = `scaleX(${nv / 100})`;
+      const ready = nv >= 100;
+      this.nova.classList.toggle('ready', ready);
+      document.body.classList.toggle('nova-ready', ready);
+    });
+    const low = s.alive && s.hp / s.maxHp < 0.35 && game.mode === 'play';
+    this.set('lowhp', low ? 1 : 0, () => document.body.classList.toggle('lowhp', low));
     const pw = s.overdrive > 0 ? `Overdrive ${Math.ceil(s.overdrive)}` : s.bubble > 0 ? `Bubble ${Math.ceil(s.bubble)}` : '';
     this.set('pw', pw, () => {
       this.power.textContent = pw;

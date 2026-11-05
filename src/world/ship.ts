@@ -4,6 +4,7 @@ import { GUNS } from '../config/guns';
 import type { Game } from '../game';
 import { clamp, turnToward, wrapAngle } from '../logic/math';
 import { makeShip, setShipGuns, type ShipRig } from '../render/models';
+import { LINES } from '../config/lines';
 
 /** The player's ship: twin-stick flight, guns, dash, missiles. */
 export class Ship {
@@ -54,6 +55,7 @@ export class Ship {
   hurt(dmg: number, game: Game): boolean {
     if (!this.alive || this.iframes > 0 || this.bubble > 0 || this.dashT > 0 || game.god) return false;
     this.hp -= dmg * game.mods.enemyDmg;
+    game.shipHit = true;
     this.iframes = BAL.ship.hitIframes;
     this.lastHit = 0;
     this.flashT = 0.1;
@@ -73,6 +75,7 @@ export class Ship {
     game.stage.shake(0.9);
     game.audio.play('bigBoom');
     game.ui.banner('Ship destroyed!', 'Respawning at the station…', 'bad', 2.2);
+    game.sayOne(LINES.shipDown);
   }
 
   respawn(game: Game): void {
@@ -204,7 +207,12 @@ export class Ship {
     for (const f of this.rig.flames) f.scale.set(thrust * (0.85 + Math.random() * 0.3), 1, 1);
     if (speed > 3 && Math.random() < 0.7) {
       const bx = this.x - Math.cos(this.heading) * 1.5, bz = this.z - Math.sin(this.heading) * 1.5;
-      game.fx.particle(bx, 0.05, bz, -this.vx * 0.15, 0, -this.vz * 0.15, 0x59d8ff, 0.5, 0.35, 1.8, 1.5);
+      game.fx.particle(bx, 0.05, bz, -this.vx * 0.15, 0, -this.vz * 0.15, game.paint.flame, 0.5, 0.35, 1.8, 1.5);
+    }
+    // a damaged ship smokes
+    if (this.hp < this.maxHp * 0.35 && Math.random() < 0.45) {
+      game.fx.particle(this.x + (Math.random() - 0.5), 0.6, this.z + (Math.random() - 0.5), -this.vx * 0.1, 2.2, -this.vz * 0.1, 0x6a6a72, 1.1, 0.9, 0.7, 1);
+      if (Math.random() < 0.15) game.fx.sparks(this.x, this.z, 0xffa040, 2, 4, 0.35, 0.5);
     }
     this.rig.bubble.visible = this.bubble > 0 || (this.iframes > 0.4 && Math.floor(game.time * 12) % 2 === 0);
     this.rig.bubble.scale.setScalar(1 + Math.sin(game.time * 8) * 0.04);
@@ -236,6 +244,7 @@ export class Ship {
         pierce: g.pierce,
         splash: g.splash,
         size: g.size,
+        crit: 0.08,
       });
     }
     if (g.singularityEvery && this.volleys % g.singularityEvery === 0) {

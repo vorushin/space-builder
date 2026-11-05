@@ -65,6 +65,7 @@ export class Bot {
       input.fireHeld = true;
     } else input.fireHeld = false;
     if (tgt && tgt.team === 'enemy' && s.missiles > 1 && Math.random() < 0.02) input.press('KeyQ');
+    if (g.nova >= 1 && tgt && tgt.team === 'enemy' && Math.hypot(tgt.x - s.x, tgt.z - s.z) < 25) g.releaseNova();
     const ev = g.events.beacon();
     if (ev && g.events.pod) {
       const dx = ev.x - s.x, dz = ev.z - s.z, d = Math.hypot(dx, dz) || 1;
