@@ -525,6 +525,7 @@ export class Game {
 
   stationDestroyed(): void {
     if (this.mode !== 'play') return;
+    this.setBuild(false);
     this.controlsLocked = true;
     this.slowMoT = 2;
     this.ui.banner('STATION LOST', 'The core is breaking apart…', 'bad', 3);

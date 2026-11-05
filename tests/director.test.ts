@@ -26,6 +26,7 @@ describe('director', () => {
     ev = run(d, 2, () => 0);
     expect(ev.map((e) => e.type)).toEqual(['waveStart', 'spawn']);
     expect(d.pendingSpawns).toBe(1);
+    expect(d.pendingEnemies).toBe(1);
     ev = run(d, 4.05, () => 3);
     expect(ev.filter((e) => e.type === 'spawn')).toHaveLength(1);
   });

@@ -51,6 +51,11 @@ export class Director {
     return this.orders.length;
   }
 
+  /** Enemies (boss counts as one) still waiting to spawn in this wave. */
+  get pendingEnemies(): number {
+    return this.phase === 'wave' || this.phase === 'warning' ? this.orders.reduce((n, o) => n + o.count, 0) : 0;
+  }
+
   /** Start the next wave now (only during calm). */
   callEarly(): boolean {
     if (this.phase !== 'calm') return false;

@@ -726,7 +726,7 @@ export class UI {
     if (game.mode === 'hyperspace') txt = 'hyper';
     else if (d.phase === 'calm') txt = 'calm' + Math.ceil(d.timer);
     else if (d.phase === 'warning') txt = 'warn';
-    else if (d.phase === 'wave') txt = 'wave' + game.enemiesAlive;
+    else if (d.phase === 'wave') txt = 'wave' + (game.enemiesAlive + d.pendingEnemies);
     else txt = d.phase;
     this.set('next', txt, () => {
       this.nextWave.className = 'next-wave';
@@ -742,7 +742,7 @@ export class UI {
         this.nextWave.textContent = 'Get ready!';
       } else if (d.phase === 'wave') {
         this.nextWave.className = 'next-wave fight';
-        this.nextWave.textContent = `Enemies left: ${game.enemiesAlive + d.pendingSpawns * 0}`;
+        this.nextWave.textContent = `Enemies left: ${game.enemiesAlive + d.pendingEnemies}`;
       } else this.nextWave.textContent = 'Wave cleared!';
     });
   }
