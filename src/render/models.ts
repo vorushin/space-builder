@@ -137,7 +137,39 @@ export function setShipGuns(r: ShipRig, tier: number, color: number): void {
 
 const darker = (c: number, k = 0.5) => new THREE.Color(c).multiplyScalar(k).getHex();
 
+const enemyTemplates = new Map<string, Rig>();
+
+/**
+ * An enemy rig. Geometry is built once per enemy type and shared by every clone
+ * (so spawning hundreds of enemies doesn't leak GPU buffers); only the hit-flash
+ * materials are per-instance. Call disposeRig() when the enemy is removed.
+ */
 export function makeEnemy(def: EnemyDef): Rig {
+  let tpl = enemyTemplates.get(def.id);
+  if (!tpl) {
+    tpl = buildEnemy(def);
+    enemyTemplates.set(def.id, tpl);
+  }
+  const root = tpl.root.clone(true);
+  const body = root.children[0] as THREE.Group;
+  const swap = new Map<THREE.Material, THREE.MeshStandardMaterial>();
+  for (const m of tpl.mats) swap.set(m, m.clone());
+  root.traverse((o) => {
+    if (o instanceof THREE.Mesh && swap.has(o.material as THREE.Material)) o.material = swap.get(o.material as THREE.Material)!;
+  });
+  const parts: Record<string, THREE.Object3D> = {};
+  for (const k of Object.keys(tpl.parts)) {
+    const found = root.getObjectByName('part:' + k);
+    if (found) parts[k] = found;
+  }
+  return { root, body, mats: [...swap.values()], parts };
+}
+
+export function disposeRig(r: Rig): void {
+  for (const m of r.mats) m.dispose();
+}
+
+function buildEnemy(def: EnemyDef): Rig {
   const r = rig();
   const main = flashMat(r, def.color, 0.35, 0.5);
   const dark = flashMat(r, darker(def.color, 0.38), 0.5, 0.5);
@@ -150,6 +182,7 @@ export function makeEnemy(def: EnemyDef): Rig {
       const ring = M(new THREE.TorusGeometry(0.88, 0.11, 5, 14).rotateX(Math.PI / 2), dark);
       b.add(ring);
       r.parts.spin = ring;
+      ring.name = 'part:spin';
       b.add(M(new THREE.SphereGeometry(0.22, 8, 6), eye, 0.52, 0.06, 0));
       b.add(M(new THREE.BoxGeometry(0.5, 0.08, 0.3), dark, -0.4, 0, 0.75), M(new THREE.BoxGeometry(0.5, 0.08, 0.3), dark, -0.4, 0, -0.75));
       break;

@@ -5,7 +5,7 @@ import type { Game } from '../game';
 import { Rng, turnToward, wrapAngle } from '../logic/math';
 import { leadAim } from '../logic/targeting';
 import type { SpawnOrder } from '../logic/waves';
-import { makeEnemy, type Rig } from '../render/models';
+import { disposeRig, makeEnemy, type Rig } from '../render/models';
 import type { Hittable } from './types';
 
 const rng = new Rng(2024);
@@ -103,6 +103,7 @@ export class Enemy implements Hittable {
 
   dispose(): void {
     this.scene.remove(this.rig.root);
+    disposeRig(this.rig);
     if (this.bar) this.scene.remove(this.bar);
   }
 
