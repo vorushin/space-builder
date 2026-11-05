@@ -190,25 +190,25 @@ body.building .build-help { display: block; }
 .stats span { font-size: 13px; color: var(--muted); }
 .row { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
 
-.sector-card { position: absolute; left: 50%; top: 40%; transform: translate(-50%, -50%); text-align: center; pointer-events: none; opacity: 0; transition: opacity 0.6s; }
+.sector-card { position: absolute; left: 50%; top: 21%; width: min(94vw, 1100px); transform: translate(-50%, -50%); text-align: center; pointer-events: none; opacity: 0; transition: opacity 0.6s; }
 .sector-card.show { opacity: 1; }
 .sector-card .num { font-family: var(--display); font-size: 22px; color: var(--mint); text-shadow: 0 2px 0 #064e3b; }
-.sector-card h1 { margin: 2px 0 0; font-family: var(--display); font-weight: 400; font-size: clamp(40px, 7.5vw, 92px); text-shadow: 0 5px 0 #1d4ed8, 0 12px 30px rgba(0, 0, 0, 0.6); }
+.sector-card h1 { margin: 2px 0 0; font-family: var(--display); font-weight: 400; font-size: clamp(34px, 7vw, 88px); line-height: 1.05; text-shadow: 0 5px 0 #1d4ed8, 0 12px 30px rgba(0, 0, 0, 0.6); }
 .sector-card p { margin: 6px 0 0; font-size: 20px; font-weight: 700; color: #dbe7f5; text-shadow: 0 2px 6px #000; }
 .sector-card .unlock { display: inline-block; margin-top: 14px; padding: 8px 16px; border-radius: 12px; background: rgba(255, 207, 74, 0.16); border: 2px solid rgba(255, 207, 74, 0.6); color: #fff1c2; font-weight: 700; font-size: 17px; }
 
 .dev { position: absolute; left: 16px; bottom: 16px; font-size: 11px; color: #9fb3c8; white-space: pre; pointer-events: none; text-shadow: 0 1px 2px #000; }
 
 /* ---------- touch ---------- */
-.touch { position: absolute; inset: 0; display: none; }
-body.touch .touch { display: block; }
+.touch-ui { position: absolute; inset: 0; display: none; }
+body.touch-mode .touch-ui { display: block; }
 .stick-zone { position: absolute; left: 0; bottom: 0; width: 45%; height: 70%; pointer-events: auto; }
 .stick { position: absolute; width: 120px; height: 120px; margin: -60px 0 0 -60px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.25); background: rgba(255, 255, 255, 0.05); display: none; }
 .stick i { position: absolute; left: 35px; top: 35px; width: 50px; height: 50px; border-radius: 50%; background: rgba(92, 255, 214, 0.45); }
 .tbtn { position: absolute; width: 74px; height: 74px; border-radius: 50%; pointer-events: auto; border: 2px solid rgba(255, 255, 255, 0.3); background: rgba(10, 24, 44, 0.6); font-size: 30px; display: flex; align-items: center; justify-content: center; }
 .tbtn.missile { right: 22px; bottom: 150px; }
 .tbtn.dashb { right: 110px; bottom: 190px; width: 62px; height: 62px; font-size: 24px; }
-body.touch .buildbar { transform: translateX(-50%) scale(0.82); transform-origin: bottom center; bottom: 8px; }
+body.touch-mode .buildbar { transform: translateX(-50%) scale(0.82); transform-origin: bottom center; bottom: 8px; }
 
 @media (max-width: 1100px) {
   .card { width: 78px; }
@@ -217,6 +217,7 @@ body.touch .buildbar { transform: translateX(-50%) scale(0.82); transform-origin
   .ship-panel, .bank-panel { width: 210px; }
 }
 @media (max-width: 860px) {
+  .sector-card { top: 26%; }
   .card .name { display: none; }
   .card { width: 60px; padding: 8px 4px 6px; }
   .card.wide { width: 64px; }

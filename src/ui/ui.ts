@@ -122,7 +122,7 @@ export class UI {
     this.buildHud();
     root.append(this.hud, this.bannerEl, this.toasts, this.sectorCardEl, this.devEl);
     this.buildScreens();
-    if (isTouch) document.body.classList.add('touch');
+    if (isTouch) document.body.classList.add('touch-mode');
   }
 
   bind(game: Game): void {
@@ -220,7 +220,7 @@ export class UI {
           <button class="btn" data-a="continue">Continue</button>
           <button class="btn" data-a="help" style="--c:#7c8db0">How to play</button>
         </div>
-        <div class="links"><a href="classic/" target="_self">Play the classic 2D version</a></div>
+        <div class="links"><a href="classic/index.html" target="_self">Play the classic 2D version</a></div>
       </div>`;
     title.querySelectorAll<HTMLButtonElement>('.diff button').forEach((b) =>
       click(b, () => {
@@ -327,7 +327,7 @@ export class UI {
   }
 
   private buildTouch(game: Game): void {
-    const t = h('div', 'touch');
+    const t = h('div', 'touch-ui');
     const zone = h('div', 'stick-zone');
     const stick = h('div', 'stick', '<i></i>');
     const knob = stick.querySelector('i') as HTMLElement;
@@ -458,6 +458,9 @@ export class UI {
   }
 
   private showBanner(title: string, sub: string, style: BannerStyle, dur: number): void {
+    // one big message at a time: a banner replaces the sector title card
+    this.sectorCardT = 0;
+    this.sectorCardEl.classList.remove('show');
     this.bannerEl.className = 'banner ' + style;
     this.bannerEl.innerHTML = `<h1></h1><p></p>`;
     this.bannerEl.querySelector('h1')!.textContent = title;
@@ -557,6 +560,10 @@ export class UI {
   setBuildMode(on: boolean): void {
     document.body.classList.toggle('building', on);
     if (!on) this.closePopup();
+    if (on) {
+      this.sectorCardT = 0;
+      this.sectorCardEl.classList.remove('show');
+    }
   }
 
   closePopup(): void {

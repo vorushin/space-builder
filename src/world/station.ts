@@ -429,6 +429,7 @@ export class Station {
     this.rings = 1;
     this.sockets = socketsFor(1);
     this.rebuildPads();
+    this.recompute(false);
     while (this.rings < rings) this.expand();
     for (const r of this.ringMeshes) {
       r.userData.grow = 1;
@@ -445,6 +446,8 @@ export class Station {
       }
     }
     this.alive = true;
+    this.setVisible(true);
+    this.recompute(false);
     this.repairFull();
   }
 

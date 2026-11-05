@@ -606,7 +606,7 @@ export class Game {
     this.audio.play('build');
     this.ui.toast(`${MODULE_BY_KIND[kind].title} built!`, 'good');
     this.ui.hint('build');
-    if (this.bank < cost || !this.station.sockets.some((s) => !this.station.modules.has(s.id))) this.placing = null;
+    this.placing = null;
     return true;
   }
 
@@ -971,7 +971,7 @@ export class Game {
     const s = this.ship;
     const st = this.stage;
     if (this.buildMode) {
-      st.distGoal = BAL.camera.buildDist + (this.station.rings - 1) * 6;
+      st.distGoal = 24 + this.station.rings * 10;
       st.follow(this.station.x, this.station.z + 2, realDt);
       return;
     }
