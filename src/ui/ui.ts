@@ -556,7 +556,7 @@ export class UI {
       [Math.round(s.crystals).toLocaleString(), 'Crystals collected'],
       [s.bosses, 'Bosses defeated'],
       [s.modules, 'Modules built'],
-      [s.rocks, 'Rocks smashed'],
+      [`${game.profile.medals.length}/${MEDALS.length}`, 'Medals collected'],
     ]
       .map(([v, l]) => `<div><b>${v}</b><span>${l}</span></div>`)
       .join('');
