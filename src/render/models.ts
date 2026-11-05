@@ -225,7 +225,8 @@ function buildEnemy(def: EnemyDef): Rig {
     }
     case 'wraith': {
       const ghost = glass(def.color, 0.9);
-      b.add(M(new THREE.OctahedronGeometry(0.7, 0).scale(1.8, 0.55, 0.9), ghost));
+      // the body flashes on hit (per-enemy material); the spikes stay ghostly glass
+      b.add(M(new THREE.OctahedronGeometry(0.7, 0).scale(1.8, 0.55, 0.9), flashMat(r, def.color, 0.2, 0.25)));
       for (const s of [1, -1]) {
         const sp = M(new THREE.ConeGeometry(0.16, 1.3, 4).rotateZ(Math.PI / 2), ghost, -0.6, 0, 0.55 * s);
         sp.rotation.y = 0.5 * s;
@@ -233,7 +234,6 @@ function buildEnemy(def: EnemyDef): Rig {
       }
       b.add(M(new THREE.ConeGeometry(0.14, 1.1, 4).rotateZ(Math.PI / 2), ghost, -1.0, 0.2, 0));
       b.add(M(new THREE.SphereGeometry(0.26, 8, 6), glow(0xffffff, 2.2), 0.1, 0.05, 0));
-      r.mats.push(...[]);
       break;
     }
     case 'stalker': {
