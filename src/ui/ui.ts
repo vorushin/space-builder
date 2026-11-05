@@ -511,7 +511,7 @@ export class UI {
 
   warning(game: Game, wave: number, boss: boolean, dirs: number[], duration: number): void {
     if (boss) this.banner('⚠ BOSS INCOMING ⚠', `${game.def.boss.name} is coming!`, 'bad', duration);
-    else this.banner(game.endless ? `WAVE ${game.endlessLevel + wave + 1}` : `WAVE ${wave + 1} INCOMING`, dirs.length > 1 ? `From ${dirs.length} sides: follow the red arrows!` : 'Follow the red arrow!', 'bad', 2.4);
+    else this.banner(game.endless ? `WAVE ${game.endlessLevel + 1}` : `WAVE ${wave + 1} INCOMING`, dirs.length > 1 ? `From ${dirs.length} sides: follow the red arrows!` : 'Follow the red arrow!', 'bad', 2.4);
     for (const d of this.incoming) d.el.remove();
     this.incoming = dirs.map((dir) => {
       const el = h('div', 'incoming' + (boss ? ' boss' : ''), `<i></i><div>${boss ? 'BOSS' : 'Incoming'}</div>`);
@@ -732,7 +732,7 @@ export class UI {
       this.nextWave.className = 'next-wave';
       if (game.mode === 'hyperspace') this.nextWave.textContent = 'Hyperspace jump…';
       else if (d.phase === 'calm') {
-        const n = game.endless ? `Wave ${game.endlessLevel + d.wave + 1}` : d.wave === d.waveCount - 1 ? 'Boss' : `Wave ${d.wave + 1}`;
+        const n = game.endless ? `Wave ${game.endlessLevel + 1}` : d.wave === d.waveCount - 1 ? 'Boss' : `Wave ${d.wave + 1}`;
         this.nextWave.innerHTML = `<span>${n} in <b>${Math.ceil(d.timer)}s</b></span>`;
         const b = h('button', 'call-btn', 'Start now <kbd style="all:unset;font-family:var(--display)">N</kbd>');
         tap(b, () => game.callWave());

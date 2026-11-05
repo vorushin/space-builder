@@ -226,7 +226,9 @@ export class Game {
   private makeDirector(fresh: boolean): void {
     const p = BAL.phases;
     if (this.endless) {
-      const d = new Director(Number.POSITIVE_INFINITY, { firstCalm: 20, calm: p.endlessCalm, warning: p.warning, bossWarning: p.bossWarning, cleared: p.cleared }, (w) => buildEndlessWave(this.endlessLevel + w + 1, this.rng, this.difficulty));
+      // endlessLevel counts cleared endless waves; this director's wave w is level base + w + 1
+      const base = this.endlessLevel;
+      const d = new Director(Number.POSITIVE_INFINITY, { firstCalm: 20, calm: p.endlessCalm, warning: p.warning, bossWarning: p.bossWarning, cleared: p.cleared }, (w) => buildEndlessWave(base + w + 1, this.rng, this.difficulty));
       this.director = d;
     } else {
       const sec = this.def;
@@ -711,7 +713,7 @@ export class Game {
           this.spawnOrder(ev.order);
           break;
         case 'waveCleared': {
-          const waveNo = this.endless ? this.endlessLevel + ev.wave + 1 : ev.wave + 1;
+          const waveNo = this.endless ? this.endlessLevel + 1 : ev.wave + 1;
           const bonus = Math.round(BAL.crystals.waveBonus * Math.min(waveNo, 8) * SECTOR_VALUE[this.sector] * this.mods.crystals);
           this.bank += bonus;
           this.crystals.vacuum();
@@ -962,7 +964,8 @@ export class Game {
     if (this.calmT < 6) return;
     this.calmEventDone = true;
     let kind: EventKind | null = null;
-    if (this.sector === 0 && d.wave === 2 && !this.sparky) kind = 'sos';
+    // Sparky's SOS comes before wave 3 of every sector until he is rescued
+    if (d.wave === 2 && !this.sparky && !this.events.pod) kind = 'sos';
     else if (d.wave >= 1 && this.rng.chance(0.75)) kind = this.events.pickRandom();
     if (kind) this.events.start(kind, this);
   }

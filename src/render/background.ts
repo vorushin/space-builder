@@ -172,18 +172,23 @@ export class Background {
     scene.add(this.sunGlow);
     this.layers.push({ obj: this.sunGlow, f: 0.95 });
 
-    // --- hyperspace streaks ---
-    const n = 420;
+    // --- hyperspace streaks: bright heads fading into long tails ---
+    const n = 900;
     this.warpPos = new Float32Array(n * 6);
+    const warpCol = new Float32Array(n * 6);
     const wg = new THREE.BufferGeometry();
     wg.setAttribute('position', new THREE.BufferAttribute(this.warpPos, 3));
+    wg.setAttribute('color', new THREE.BufferAttribute(warpCol, 3));
     for (let i = 0; i < n; i++) {
-      const x = rng.range(-320, 320), y = rng.range(-300, -20), z = rng.range(-700, 200);
+      const x = rng.range(-360, 360), y = rng.range(-320, -10), z = rng.range(-760, 200);
       this.warpPos.set([x, y, z, x, y, z - 20], i * 6);
+      const k = rng.range(0.6, 1.6);
+      const tint = rng.chance(0.3) ? [1.0, 0.75, 1.6] : [0.75, 1.1, 1.7];
+      warpCol.set([tint[0] * k * 2, tint[1] * k * 2, tint[2] * k * 2, 0, 0, 0], i * 6);
     }
     this.warp = new THREE.LineSegments(
       wg,
-      new THREE.LineBasicMaterial({ color: new THREE.Color(1.6, 2.2, 3.2), transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false }),
+      new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false }),
     );
     this.warp.frustumCulled = false;
     scene.add(this.warp);
@@ -264,12 +269,12 @@ export class Background {
     wm.opacity = this.warpAmount;
     this.warp.visible = this.warpAmount > 0.01;
     if (this.warp.visible) {
-      const len = 10 + this.warpAmount * 140;
-      const speed = 300 + this.warpAmount * 1400;
+      const len = 10 + this.warpAmount * this.warpAmount * 260;
+      const speed = 300 + this.warpAmount * 1800;
       const a = this.warpPos;
       for (let i = 0; i < a.length; i += 6) {
         let z = a[i + 2] + speed * dt;
-        if (z > 260) z -= 960;
+        if (z > 260) z -= 1020;
         a[i + 2] = z;
         a[i + 5] = z - len;
       }

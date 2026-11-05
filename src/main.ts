@@ -30,7 +30,7 @@ const speed = game.dev ? Math.max(1, Math.min(8, Number(params.get('speed') ?? 1
 let bot: { tick(g: Game, dt: number): void; log: string[] } | null = null;
 if (game.dev && params.has('bot')) {
   void import('./dev/bot').then((m) => {
-    bot = new m.Bot();
+    bot = new m.Bot(params.get('bot') === 'weak');
     (window as unknown as { __bot: unknown }).__bot = bot;
   });
 }

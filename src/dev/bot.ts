@@ -12,6 +12,8 @@ const BUILD_ORDER: ModuleKind[] = ['turret', 'mining', 'turret', 'shield', 'miss
 export class Bot {
   private buyT = 0;
   log: string[] = [];
+  /** weak = sloppy aim, slow buying, mostly turrets: a stand-in for a young player */
+  constructor(readonly weak = false) {}
 
   tick(g: Game, dt: number): void {
     if (g.mode !== 'play' || g.paused) return;
@@ -55,7 +57,8 @@ export class Bot {
     const l = Math.hypot(mv.x, mv.z);
     input.stick = l > 1 ? { x: mv.x / l, z: mv.z / l } : mv;
     if (tgt) {
-      const p = g.project(tgt.x, tgt.z);
+      const j = this.weak ? 4 : 0;
+      const p = g.project(tgt.x + (Math.random() - 0.5) * j, tgt.z + (Math.random() - 0.5) * j);
       input.mouseX = p.x;
       input.mouseY = p.y;
       input.hasMouse = true;
@@ -70,7 +73,7 @@ export class Bot {
 
     this.buyT -= dt;
     if (this.buyT > 0 || g.buildMode) return;
-    this.buyT = 0.5;
+    this.buyT = this.weak ? 6 : 0.5;
     this.buy(g);
   }
 
@@ -93,7 +96,7 @@ export class Bot {
       return;
     }
     if (free.length) {
-      const order = BUILD_ORDER.filter((k) => moduleUnlocked(k, g.sector));
+      const order = this.weak ? (['turret', 'turret', 'mining', 'shield'] as ModuleKind[]).filter((k) => moduleUnlocked(k, g.sector)) : BUILD_ORDER.filter((k) => moduleUnlocked(k, g.sector));
       const kind = order[mods % order.length];
       const c = moduleCost(kind, 1)!;
       if (g.bank >= c) {
