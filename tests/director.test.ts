@@ -80,6 +80,8 @@ describe('director', () => {
     const warnings = ev.filter((e) => e.type === 'warning') as Extract<DirectorEvent, { type: 'warning' }>[];
     expect(warnings.map((w) => w.boss)).toEqual([false, false, true]);
     expect(warnings[2].duration).toBe(3);
+    expect(warnings[2].bossId).toBe('boss');
+    expect(warnings[0].bossId).toBeUndefined();
     expect(ev[ev.length - 1]).toEqual({ type: 'sectorClear' });
     expect(d.phase).toBe('sectorClear');
     expect(run(d, 5, () => 0)).toHaveLength(0);

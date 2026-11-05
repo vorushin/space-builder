@@ -44,6 +44,8 @@ function tap(el: HTMLElement, fn: () => void): void {
   el.addEventListener('pointerdown', (e) => {
     e.preventDefault();
     e.stopPropagation();
+    // only the primary button: a right-click "cancel" over a popup must not sell things
+    if (e.button !== 0) return;
     fn();
   });
 }
@@ -509,8 +511,9 @@ export class UI {
     }
   }
 
-  warning(game: Game, wave: number, boss: boolean, dirs: number[], duration: number): void {
-    if (boss) this.banner('⚠ BOSS INCOMING ⚠', `${game.def.boss.name} is coming!`, 'bad', duration);
+  warning(game: Game, wave: number, boss: boolean, dirs: number[], duration: number, bossId?: string): void {
+    const bossName = SECTORS.find((sec) => sec.boss.id === bossId)?.boss.name ?? game.def.boss.name;
+    if (boss) this.banner('⚠ BOSS INCOMING ⚠', `${bossName} is coming!`, 'bad', duration);
     else this.banner(game.endless ? `WAVE ${game.endlessLevel + 1}` : `WAVE ${wave + 1} INCOMING`, dirs.length > 1 ? `From ${dirs.length} sides: follow the red arrows!` : 'Follow the red arrow!', 'bad', 2.4);
     for (const d of this.incoming) d.el.remove();
     this.incoming = dirs.map((dir) => {
@@ -627,10 +630,10 @@ export class UI {
 
   // ================================================================ per-frame update
 
-  update(game: Game): void {
-    const dt = 1 / 60;
+  update(game: Game, frameDt: number): void {
+    const dt = frameDt;
     this.frames++;
-    this.fpsT += 1 / 60;
+    this.fpsT += dt;
     // banners
     if (this.bannerT > 0) {
       this.bannerT -= dt;
@@ -653,9 +656,9 @@ export class UI {
 
     this.updateShip(game);
     this.updateSector(game);
-    this.updateBank(game);
+    this.updateBank(game, dt);
     this.updateCards(game);
-    this.updateIndicators(game);
+    this.updateIndicators(game, dt);
     this.updateHints(game, dt);
     this.updatePopup(game);
 
@@ -747,11 +750,11 @@ export class UI {
     });
   }
 
-  private updateBank(game: Game): void {
+  private updateBank(game: Game, dt: number): void {
     const b = Math.floor(game.bank);
     this.set('bank', b, () => (this.bankNum.textContent = b.toLocaleString()));
     if (this.bankPopT > 0) {
-      this.bankPopT -= 1 / 60;
+      this.bankPopT -= dt;
       this.bankNum.classList.add('pop');
     } else this.bankNum.classList.remove('pop');
     const st = game.station;
@@ -766,7 +769,7 @@ export class UI {
       (this.shieldBar.firstChild as HTMLElement).style.transform = `scaleX(${Math.max(0, sh) / 100})`;
     });
     if (this.stationHurtT > 0) {
-      this.stationHurtT -= 1 / 60;
+      this.stationHurtT -= dt;
       this.stationBar.style.outline = '2px solid rgba(255,90,110,0.9)';
     } else this.stationBar.style.outline = '';
   }
@@ -834,7 +837,7 @@ export class UI {
     }
   }
 
-  private updateIndicators(game: Game): void {
+  private updateIndicators(game: Game, dt: number): void {
     const W = window.innerWidth, H = window.innerHeight;
     let used = 0;
     const tgt = game.stage.target;
@@ -878,7 +881,7 @@ export class UI {
 
     // incoming wave chevrons
     for (const inc of this.incoming) {
-      inc.t -= 1 / 60;
+      inc.t -= dt;
       if (inc.t <= 0) {
         inc.el.remove();
         continue;

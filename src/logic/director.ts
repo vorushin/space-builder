@@ -9,7 +9,7 @@ export type Phase = 'calm' | 'warning' | 'wave' | 'cleared' | 'sectorClear';
 
 export type DirectorEvent =
   | { type: 'calm'; wave: number; duration: number }
-  | { type: 'warning'; wave: number; boss: boolean; dirs: number[]; duration: number }
+  | { type: 'warning'; wave: number; boss: boolean; bossId?: string; dirs: number[]; duration: number }
   | { type: 'waveStart'; wave: number; boss: boolean }
   | { type: 'spawn'; order: SpawnOrder }
   | { type: 'waveCleared'; wave: number; early: boolean }
@@ -124,7 +124,8 @@ export class Director {
     this.timer = this.boss ? this.t.bossWarning : this.t.warning;
     const dirs: number[] = [];
     for (const o of this.orders) if (!dirs.some((d) => Math.abs(d - o.dir) < 1e-6)) dirs.push(o.dir);
-    ev.push({ type: 'warning', wave: this.wave, boss: this.boss, dirs, duration: this.timer });
+    const bossId = this.orders.find((o) => o.boss)?.enemy;
+    ev.push({ type: 'warning', wave: this.wave, boss: this.boss, bossId, dirs, duration: this.timer });
   }
 
   private emitSpawns(ev: DirectorEvent[]): number {

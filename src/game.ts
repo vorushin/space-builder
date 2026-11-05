@@ -174,6 +174,9 @@ export class Game {
     this.buildMode = false;
     this.placing = null;
     this.station.setBuildMode(false);
+    this.ui.setBuildMode(false);
+    this.ui.clearIncoming();
+    this.ui.bossBar(null);
   }
 
   newGame(difficulty: Difficulty): void {
@@ -209,6 +212,7 @@ export class Game {
     this.makeDirector(fresh);
     this.mode = 'play';
     this.paused = false;
+    this.audio.setPaused(false);
     this.controlsLocked = false;
     this.stage.follow(this.ship.x, this.ship.z, 0, true);
     this.saveCheckpoint();
@@ -270,6 +274,7 @@ export class Game {
     this.resetWorld();
     this.mode = 'title';
     this.paused = false;
+    this.audio.setPaused(false);
     this.checkpoint = this.loadCheckpoint();
     this.ship.rig.root.visible = false;
     this.drones.clear();
@@ -491,6 +496,7 @@ export class Game {
 
   bossDefeated(boss: Boss): void {
     this.ceaseFire = true;
+    this.director?.dropPending();
     this.slowMoT = 1.8;
     this.stats.bosses++;
     this.bolts.clearEnemy(this);
@@ -665,7 +671,7 @@ export class Game {
     this.buildMode = on;
     this.station.setBuildMode(on);
     this.ui.setBuildMode(on);
-    this.input.fireHeld = false;
+    this.input.releaseFire();
   }
 
   /** Click on the play field while building. */
@@ -703,7 +709,7 @@ export class Game {
           this.audio.music(this.endless ? 'battle' : 'calm');
           break;
         case 'warning':
-          this.ui.warning(this, ev.wave, ev.boss, ev.dirs, ev.duration);
+          this.ui.warning(this, ev.wave, ev.boss, ev.dirs, ev.duration, ev.bossId);
           this.audio.play('siren');
           this.setBuild(false);
           break;
@@ -841,7 +847,7 @@ export class Game {
       }
     }
     if (this.paused) {
-      this.ui.update(this);
+      this.ui.update(this, 0);
       this.stage.update(0);
       input.endFrame();
       return;
@@ -938,7 +944,7 @@ export class Game {
     this.bolts.render();
     this.bg.update(realDt, this.stage.target, this.stage.renderer.getPixelRatio());
     this.stage.update(realDt);
-    this.ui.update(this);
+    this.ui.update(this, realDt);
     this.input.endFrame();
   }
 
@@ -999,7 +1005,7 @@ export class Game {
   setPaused(p: boolean): void {
     if (this.mode !== 'play') return;
     this.paused = p;
-    this.input.fireHeld = false;
+    this.input.releaseFire();
     this.ui.showPause(p, this);
     this.audio.setPaused(p);
   }

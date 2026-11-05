@@ -8,6 +8,8 @@ export class Input {
   mouseY = 0;
   hasMouse = false;
   fireHeld = false;
+  private leftArmed = false;
+  private rightDown = false;
   /** touch: left stick vector (-1..1) and auto-fire */
   stick: V2 = { x: 0, z: 0 };
   touchActive = false;
@@ -24,24 +26,25 @@ export class Input {
     window.addEventListener('keyup', (e) => this.down.delete(e.code));
     window.addEventListener('blur', () => this.reset());
     window.addEventListener('contextmenu', (e) => e.preventDefault());
-    window.addEventListener('pointermove', (e) => {
+    // Mouse buttons are tracked from the `buttons` bitmask: a second button pressed while
+    // another is held arrives as a pointermove (chorded buttons), not a pointerdown.
+    const track = (e: PointerEvent, isDown: boolean) => {
       if (e.pointerType === 'touch') return;
       this.mouseX = e.clientX;
       this.mouseY = e.clientY;
       this.hasMouse = true;
-    });
-    canvas.addEventListener('pointerdown', (e) => {
-      if (e.pointerType === 'touch') return;
-      this.mouseX = e.clientX;
-      this.mouseY = e.clientY;
-      this.hasMouse = true;
-      if (e.button === 0) this.fireHeld = true;
-      if (e.button === 2) this.edges.add('Mouse2');
-    });
-    window.addEventListener('pointerup', (e) => {
-      if (e.pointerType === 'touch') return;
-      if (e.button === 0) this.fireHeld = false;
-    });
+      const left = (e.buttons & 1) !== 0;
+      const right = (e.buttons & 2) !== 0;
+      // firing only starts from a press on the play field (not on HUD buttons)
+      if (isDown && e.target === canvas && e.button === 0) this.leftArmed = true;
+      if (!left) this.leftArmed = false;
+      this.fireHeld = left && this.leftArmed;
+      if (right && !this.rightDown && e.target === canvas) this.edges.add('Mouse2');
+      this.rightDown = right;
+    };
+    window.addEventListener('pointermove', (e) => track(e, false));
+    window.addEventListener('pointerdown', (e) => track(e, true));
+    window.addEventListener('pointerup', (e) => track(e, false));
     canvas.addEventListener(
       'wheel',
       (e) => {
@@ -55,7 +58,15 @@ export class Input {
   reset(): void {
     this.down.clear();
     this.fireHeld = false;
+    this.leftArmed = false;
+    this.rightDown = false;
     this.stick = { x: 0, z: 0 };
+  }
+
+  /** Stop shooting until the next press on the play field (pause, build mode). */
+  releaseFire(): void {
+    this.fireHeld = false;
+    this.leftArmed = false;
   }
 
   isDown(...codes: string[]): boolean {

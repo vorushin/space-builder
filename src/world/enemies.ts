@@ -91,7 +91,7 @@ export class Enemy implements Hittable {
     game.stats.kills++;
     const chance = this.def.role === 'tank' ? BAL.powerupChanceTank : BAL.powerupChance;
     if (rng.chance(chance)) game.pickups.drop(game, this.x, this.z);
-    if (this.def.role === 'splitter') {
+    if (this.def.role === 'splitter' && !silent) {
       const spawn = ENEMY_BY_ID['xeno_spawn'];
       for (const s of [-1, 1]) {
         const e = game.spawnEnemy(spawn, this.x + Math.cos(this.heading + s * 1.6) * 1.2, this.z + Math.sin(this.heading + s * 1.6) * 1.2, this.heading + s * 0.8, 1);

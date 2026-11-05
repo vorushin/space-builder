@@ -344,7 +344,8 @@ export class Boss implements Hittable {
       const s = game.ship;
       if (s.alive && Math.hypot(s.x - this.x, s.z - this.z) < this.r + s.r + 0.5) s.hurt(25, game);
       const st = game.station;
-      if (st.alive && Math.hypot(this.x, this.z) < st.radius + this.r && !cease) {
+      // (update() keeps bosses at station.radius + r + 2, so "touching" means within that ring)
+      if (st.alive && Math.hypot(this.x, this.z) < st.radius + this.r + 2.5 && !cease) {
         st.hurt(60, game, this.x, this.z);
         game.fx.explosion(this.x, this.z, 2.5, 0xff6a3a);
         game.stage.shake(0.8);

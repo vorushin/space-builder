@@ -68,7 +68,10 @@ export class AsteroidField {
   }
 
   clear(): void {
-    for (const a of this.list) this.scene.remove(a.mesh);
+    for (const a of this.list) {
+      a.alive = false; // anything still holding a reference (mining drones) must let go
+      this.scene.remove(a.mesh);
+    }
     this.list.length = 0;
   }
 
