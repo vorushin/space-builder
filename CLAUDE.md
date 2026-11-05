@@ -97,6 +97,14 @@ public/classic/      the original 2D game, untouched
   camera on the boss, controls locked and enemies holding fire.
 - **Profile** (`localStorage space-builder-3d.profile`): `game.profile` and `saveProfile()`.
   It is separate from the run checkpoint.
+- **Co-op and controllers:** `game.ships` is `[ship]` or `[ship, p2]`. Use
+  `game.nearestShip(x, z)` for anything that targets or touches "the player". Each ship
+  reads its `cmd: ShipCmd` (move/aim/fire/dash/missile/nova), which `Game.buildCommands()`
+  fills every frame from the keyboard, mouse, touch and `Gamepads`. Player 2 has arrows
+  with auto-aim, Right Shift, Enter and /, or a controller. The ships share crystals, gun
+  tier and NOVA.
+- **Sector events:** `SECTOR_EVENTS` in `world/events.ts` adds treasure (sector 2), storm
+  (sector 3) and lava (sector 4) to the random calm-phase pool.
 
 ## Common changes
 

@@ -31,6 +31,14 @@ Play it: https://space-builder-one.vercel.app. The original 2D game is still the
 On a tablet you get a touch stick on the left. The ship aims and fires by itself, and
 the build cards are tappable.
 
+**Two players:** choose "2 players" on the title screen.
+- **Player 2 on the keyboard:** fly with the arrow keys. The ship aims and shoots by
+  itself. Right Shift dashes, Enter fires a missile and / fires NOVA.
+- **Player 2 on a controller:** left stick flies, right stick aims and shoots, A dashes,
+  B fires a missile and Y fires NOVA.
+
+A controller also works in single-player.
+
 On the title screen, type your commander name and pick a paint job for your ship. ARIA,
 the station computer, will call you by name. There are 15 medals to collect, and the title
 screen shows your best Endless wave.
