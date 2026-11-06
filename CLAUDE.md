@@ -28,6 +28,10 @@ npm run build   # tsc --noEmit && vite build → dist/
 ```
 
 Vercel builds with `vercel.json` (framework vite, output `dist/`). Pushing to `main` deploys.
+If pushes stop showing up in Vercel (no deployment and no "Vercel" status on the commit), the
+project's Git link has gone stale: in Vercel, open space-builder → Settings → Git, then disconnect
+and reconnect `vorushin/space-builder`. That happened in Nov 2026, after the Vercel GitHub app was
+reinstalled.
 
 ## Stack and conventions
 
